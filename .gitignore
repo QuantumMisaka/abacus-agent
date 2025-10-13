@@ -48,3 +48,6 @@ test-results/
 
 .DS_Store
 Thumbs.db
+
+# 项目特定文档
+SYNC_GUIDE.md
