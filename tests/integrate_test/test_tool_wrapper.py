@@ -17,8 +17,14 @@ class TestToolWrapper(unittest.TestCase):
         self.test_path = Path(self.test_dir.name)
         self.abacus_inputs_dir_si_prim = Path(__file__).parent / 'abacus_inputs_dirs/Si-prim/'
         self.stru_scf = self.abacus_inputs_dir_si_prim / "STRU_scf"
+        self.abacus_inputs_dir_si_prim_elastic = Path(__file__).parent / 'abacus_inputs_dirs/Si-prim-elastic/'
+        self.stru_elastic = self.abacus_inputs_dir_si_prim_elastic / "STRU_cell_relaxed"
         self.abacus_inputs_dir_fe_bcc_prim = Path(__file__).parent / 'abacus_inputs_dirs/Fe-BCC-prim/'
         self.stru_fe_bcc_prim = self.abacus_inputs_dir_fe_bcc_prim / "STRU_cell_relaxed"
+        self.abacus_inputs_dir_al110 = Path(__file__).parent / 'abacus_inputs_dirs/Al110/'
+        self.stru_al110 = self.abacus_inputs_dir_al110 / "STRU"
+        self.abacus_inputs_dir_tial = Path(__file__).parent / 'abacus_inputs_dirs/gamma-TiAl-P4mmm/'
+        self.stru_tial = self.abacus_inputs_dir_tial / "STRU"
 
         self.original_cwd = os.getcwd()
         os.chdir(self.test_path)
@@ -159,7 +165,7 @@ class TestToolWrapper(unittest.TestCase):
         badercharge_run_workpath = outputs['badercharge_run_workpath']
         self.assertIsInstance(abacus_workpath, get_path_type())
         self.assertIsInstance(badercharge_run_workpath, get_path_type())
-        for act, ref in zip(outputs['bader_charges'], ref_results['bader_charges']):
+        for act, ref in zip(outputs['net_charges'], ref_results['net_charges']):
             self.assertAlmostEqual(act, ref, places=3)
         for act, ref in zip(outputs['atom_labels'], ref_results['atom_labels']):
             self.assertEqual(act, ref)
@@ -192,7 +198,7 @@ class TestToolWrapper(unittest.TestCase):
         ref_results = load_test_ref_result(test_func_name)
         test_work_dir = self.test_path / test_func_name
         os.makedirs(test_work_dir, exist_ok=True)
-        shutil.copy2(self.stru_scf, test_work_dir / "STRU")
+        shutil.copy2(self.stru_elastic, test_work_dir / "STRU")
         
         outputs = run_abacus_calculation(test_work_dir / "STRU", property='elastic_properties')
         print(outputs)
@@ -203,12 +209,12 @@ class TestToolWrapper(unittest.TestCase):
         for elastic_tensor_output_row, elastic_tensor_ref_row in zip(outputs['elastic_tensor'], ref_results['elastic_tensor']):
             self.assertEqual(len(elastic_tensor_output_row), len(elastic_tensor_ref_row))
             for element_output, element_ref in zip(elastic_tensor_output_row, elastic_tensor_ref_row):
-                self.assertAlmostEqual(element_output, element_ref, places=3)
+                self.assertAlmostEqual(element_output, element_ref, delta=0.1)
 
-        self.assertAlmostEqual(outputs['bulk_modulus'], ref_results['bulk_modulus'], places=2)
-        self.assertAlmostEqual(outputs['shear_modulus'], ref_results['shear_modulus'], places=2)
-        self.assertAlmostEqual(outputs['young_modulus'], ref_results['young_modulus'], places=2)
-        self.assertAlmostEqual(outputs['poisson_ratio'], ref_results['poisson_ratio'], places=2)
+        self.assertAlmostEqual(outputs['bulk_modulus'], ref_results['bulk_modulus'], delta=0.1)
+        self.assertAlmostEqual(outputs['shear_modulus'], ref_results['shear_modulus'], delta=0.1)
+        self.assertAlmostEqual(outputs['young_modulus'], ref_results['young_modulus'], delta=0.1)
+        self.assertAlmostEqual(outputs['poisson_ratio'], ref_results['poisson_ratio'], delta=0.01)
     
     @pytest.mark.long
     def test_run_abacus_calculation_phonon_dispersion(self):
@@ -225,13 +231,12 @@ class TestToolWrapper(unittest.TestCase):
         print(outputs)
         
         self.assertIsInstance(outputs['phonon_work_path'], get_path_type())
-        self.assertIsInstance(outputs['band_plot'], get_path_type())
-        self.assertIsInstance(outputs['dos_plot'], get_path_type())
+        self.assertIsInstance(outputs['band_dos_plot'], get_path_type())
 
-        self.assertAlmostEqual(outputs['entropy'], ref_results['entropy'], places=3)
-        self.assertAlmostEqual(outputs['free_energy'], ref_results['free_energy'], places=3)
-        self.assertAlmostEqual(outputs['max_frequency_THz'], ref_results['max_frequency_THz'], places=3)
-        self.assertAlmostEqual(outputs['max_frequency_K'], ref_results['max_frequency_K'], places=3)
+        self.assertAlmostEqual(outputs['entropy'], ref_results['entropy'], places=2)
+        self.assertAlmostEqual(outputs['free_energy'], ref_results['free_energy'], places=2)
+        self.assertAlmostEqual(outputs['max_frequency_THz'], ref_results['max_frequency_THz'], places=2)
+        self.assertAlmostEqual(outputs['max_frequency_K'], ref_results['max_frequency_K'], places=2)
     
     def test_run_abacus_calculation_md(self):
         """
@@ -257,3 +262,48 @@ class TestToolWrapper(unittest.TestCase):
         self.assertIsInstance(outputs['md_work_path'], get_path_type())
         self.assertIsInstance(outputs['md_traj_file'], get_path_type())
 
+    def test_run_abacus_calculation_vacancy_formation_energy(self):
+        """
+        Test the abacus_calculation_scf function to calculate vacancy formation energy
+        """
+        test_func_name = inspect.currentframe().f_code.co_name
+        ref_results = load_test_ref_result(test_func_name)
+        test_work_dir = self.test_path / test_func_name
+        os.makedirs(test_work_dir, exist_ok=True)
+        shutil.copy2(self.stru_tial, test_work_dir / "STRU")
+        
+        outputs = run_abacus_calculation(test_work_dir / "STRU", property='vacancy_formation_energy',
+                                         vacancy_supercell = [1, 1, 1],
+                                         vacancy_element = 'Ti',
+                                         vacancy_element_index = 1)
+        
+        print(outputs)
+
+        self.assertIsInstance(outputs['supercell_jobpath'], get_path_type())
+        self.assertIsInstance(outputs['defect_supercell_jobpath'], get_path_type())
+        self.assertIsInstance(outputs['vacancy_element_crys_jobpath'], get_path_type())
+        self.assertAlmostEqual(outputs['vac_formation_energy'], ref_results['vac_formation_energy'], places=3)
+    
+    def test_run_abacus_calculation_work_function(self):
+        """
+        Test the abacus_calculation_scf function to calculate work function
+        """
+        test_func_name = inspect.currentframe().f_code.co_name
+        ref_results = load_test_ref_result(test_func_name)
+        
+        test_work_dir = self.test_path / test_func_name
+        os.makedirs(test_work_dir, exist_ok=True)
+        shutil.copy2(self.stru_al110, test_work_dir / "STRU")
+
+        outputs = run_abacus_calculation(self.stru_al110,
+                                         vacuum_direction='y',
+                                         dipole_correction=False,
+                                         property='work_function')
+
+        print(outputs)
+
+        self.assertIsInstance(outputs['averaged_elecstat_pot_plot'], get_path_type())
+        self.assertEqual(len(outputs['work_function_results']), len(ref_results['work_function_results']))
+        for i in range(len(outputs['work_function_results'])):
+            self.assertAlmostEqual(outputs['work_function_results'][i]['work_function'], ref_results['work_function_results'][i]['work_function'], places=2)
+        

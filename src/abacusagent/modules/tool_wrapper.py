@@ -3,6 +3,7 @@ import os
 from typing import Literal, Optional, TypedDict, Dict, Any, List, Tuple, Union
 
 from abacusagent.init_mcp import mcp
+from abacusagent.modules.util.comm import get_relax_precision
 from abacusagent.modules.submodules.abacus import abacus_prepare
 from abacusagent.modules.submodules.cube import abacus_cal_elf
 from abacusagent.modules.submodules.band import abacus_cal_band
@@ -13,6 +14,8 @@ from abacusagent.modules.submodules.elastic import abacus_cal_elastic
 from abacusagent.modules.submodules.eos import abacus_eos
 from abacusagent.modules.submodules.relax import abacus_do_relax
 from abacusagent.modules.submodules.md import abacus_run_md
+from abacusagent.modules.submodules.work_function import abacus_cal_work_function
+from abacusagent.modules.submodules.vacancy import abacus_cal_vacancy_formation_energy
 
 @mcp.tool()
 def run_abacus_calculation(
@@ -21,7 +24,8 @@ def run_abacus_calculation(
     relax: bool = False,
     relax_cell: bool = True,
     relax_precision: Literal['low', 'medium', 'high'] = 'medium',
-    property: Literal['bader_charge', 'elf', 'band', 'dos', 'elastic_properties', 'eos', 'phonon_dispersion', 'md'] = 'bader_charge',
+    property: Literal['bader_charge', 'elf', 'band', 'dos', 'elastic_properties', 'eos', 'phonon_dispersion', 'md',
+                      'work_function', 'vacancy_formation_energy'] = 'bader_charge',
     lcao: bool = True,
     nspin: Literal[1, 2, 4] = 1,
     dft_functional: Literal['PBE', 'PBEsol', 'LDA', 'SCAN', 'HSE', "PBE0", 'R2SCAN'] = 'PBE',
@@ -31,6 +35,12 @@ def run_abacus_calculation(
                          Literal['auto']]] = None,
     init_mag: Optional[Dict[str, float]] = None,
     #afm: bool = False,
+    vacuum_direction: Optional[Literal['x', 'y', 'z']] = 'z',
+    dipole_correction: bool = False,
+    vacancy_supercell: List[int] = [1, 1, 1],
+    vacancy_element: str = None,
+    vacancy_element_index: int = 1,
+    vacancy_relax_precision: Literal['low', 'medium', 'high'] = 'medium',
     md_type: Literal['nve', 'nvt', 'npt', 'langevin'] = 'nve',
     md_nstep: int = 10,
     md_dt: float = 1.0,
@@ -46,15 +56,16 @@ def run_abacus_calculation(
     Calculate properties using ABACUS.
 
     Args:
+        The following parameters are commom for all properties:
         stru_file (Path): Structure file in cif, poscar, or abacus/stru format.
         stru_type (Literal["cif", "poscar", "abacus/stru"] = "cif"): Type of structure file, can be 'cif', 'poscar', or 'abacus/stru'. 'cif' is the default. 'poscar' is the VASP POSCAR format. 'abacus/stru' is the ABACUS structure format.
         relax: Whether to do a relax calculation before doing the property calculation. Default is False.
             If the calculated property is phonon dispersion or elastic properties, the crystal should be relaxed first with relax_cell set to True and `relax_precision` is strongly recommended be set to `high`.
         relax_cell (bool): Whether to relax the cell size during the relax calculation. Default is True.
         relax_precision (Literal['low', 'medium', 'high']): The precision of the relax calculation, can be 'low', 'medium', or 'high'. Default is 'medium'.
-            'Low' means the relax calculation will be done with force_thr_ev=0.05 and stress_thr_kbar=5.
-            'Medium' means the relax calculation will be done with force_thr_ev=0.01 and stress_thr_kbar=1.0.
-            'High' means the relax calculation will be done with force_thr_ev=0.005 and stress_thr_kbar=0.5.
+            'low' means the relax calculation will be done with force_thr_ev=0.05 and stress_thr_kbar=5.
+            'medium' means the relax calculation will be done with force_thr_ev=0.01 and stress_thr_kbar=1.0.
+            'high' means the relax calculation will be done with force_thr_ev=0.005 and stress_thr_kbar=0.5.
         property: String indicating the property to calculate, can be 'bader_charge', 'elf', 'band', 'dos', 'elastic_properties', 'eos', 'phonon_dispersion', or 'md'. Default is 'bader_charge'.
             For band and dos calculations, only nspin=1 or 2 is supported.
             For equation of state fitting, only cubic cell is supported.
@@ -73,6 +84,17 @@ def run_abacus_calculation(
                 For example, {"Fe": ["d", 4], "O": ["p", 1]} means applying DFT+U to Fe 3d orbital with U=4 eV and O 2p orbital with U=1 eV.
         init_mag ( dict or None): The initial magnetic moment for magnetic elements, should be a dict like {"Fe": 4, "Ti": 1}, where the key is the element symbol and the value is the initial magnetic moment.
 
+        The following parameters are only used when `property` is `work_function`:
+        vacuum_direction (Literal['x', 'y', 'z'] or None): The direction of the vacuum layer. Can be 'x', 'y', or 'z'. Default is 'z'.
+        dipole_correction (bool): Whether to apply dipole correction during the calculation of work function. Default is False.
+        
+        The following parameters are only used when `property` is `vacancy_formation_energy`:
+        vacancy_supercell (List[int]): Supercell matrix. Defaults to [1, 1, 1], which means no supercell in the calculation of vacancy formation energy.
+        vacancy_element (str): Element to be removed. Default is None, which means the first type of element in the structure file.
+        vacancy_element_index (int): Index of the vacancy element. Defaults to 1. The index is in the original structure. and should be counted for the given element.
+        vacancy_relax_precision (Literal['low', 'medium', 'high']): The precision of the relax calculation for the calculation of vacancy formation energy, can be 'low', 'medium', or 'high'. Default is 'medium'.
+            The definition of the relax precision is the same as the relax_precision parameter in the keyword `relax_precision` in the `abacus_cal_band` function.
+        
         The following parameters are only used when `property` is `md`:
         md_type (Literal['nve', 'nvt', 'npt', 'langevin']): The algorithm to integrate the equation of motion for molecular dynamics (MD).
             - nve: NVE ensemble with velocity Verlet algorithm.
@@ -142,14 +164,7 @@ def run_abacus_calculation(
     abacus_inputs_dir = abacus_prepare_outputs['abacus_inputs_dir']
 
     if relax:
-        if relax_precision == 'low':
-            force_thr_ev, stress_thr_kbar = 0.05, 5
-        elif relax_precision == 'medium':
-            force_thr_ev, stress_thr_kbar = 0.01, 1.0
-        elif relax_precision == 'high':
-            force_thr_ev, stress_thr_kbar = 0.005, 0.5
-        else:
-            raise ValueError(f'Invalid relax_precision: {relax_precision}')
+        relax_thresholds = get_relax_precision(relax_precision)
         
         if relax_cell is False: # For ABACUS LTSv3.10.0
             relax_method = 'bfgs_trad'
@@ -158,8 +173,8 @@ def run_abacus_calculation(
         
         max_steps = 100
         relax_outputs = abacus_do_relax(abacus_inputs_dir,
-                                        force_thr_ev=force_thr_ev,
-                                        stress_thr_kbar=stress_thr_kbar,
+                                        force_thr_ev=relax_thresholds['force_thr_ev'],
+                                        stress_thr_kbar=relax_thresholds['stress_thr'],
                                         max_steps=max_steps,
                                         relax_cell=relax_cell,
                                         relax_method=relax_method)
@@ -200,6 +215,16 @@ def run_abacus_calculation(
                                 md_pcouple,
                                 md_dumpfreq,
                                 md_seed)
+    elif property == 'work_function':
+        outputs = abacus_cal_work_function(abacus_inputs_dir,
+                                           vacuum_direction,
+                                           dipole_correction)
+    elif property == 'vacancy_formation_energy':
+        outputs = abacus_cal_vacancy_formation_energy(abacus_inputs_dir,
+                                                      vacancy_supercell,
+                                                      vacancy_element,
+                                                      vacancy_element_index,
+                                                      vacancy_relax_precision)
     else:
         raise ValueError(f'Invalid property: {property}')
     
