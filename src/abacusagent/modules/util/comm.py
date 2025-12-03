@@ -9,6 +9,7 @@ import traceback
 import uuid
 import glob
 
+from abacusagent.modules.submodules.relax import abacus_prepare_inputs_from_relax_results
 from abacustest.lib_prepare.abacus import ReadInput
 from abacustest.lib_collectdata.collectdata import RESULT
 
@@ -287,22 +288,27 @@ def link_abacusjob(src: str,
             else:
                 os.symlink(file, dst_file)
             
+            
 def generate_work_path(create: bool = True) -> str:
     """
-    Generate a unique working directory path based on call function and current time.
-    
-    directory = calling function name + current time + random string.
-    
+    Generate a concise, time-sortable working directory name. Edited by QuantumMisaka
+
+    Naming rule: `MMDDHHMM` + `calling_function` + 4-digit random number.
+    Second-level timestamp ensures lexicographic order reflects creation time while keeping name short.
+    Keep the caller function name for traceability, and use a short random suffix to avoid collisions.
+
     Returns:
-        str: The path to the working directory.
+        str: The relative path string of the working directory.
     """
     calling_function = traceback.extract_stack(limit=2)[-2].name
-    current_time = time.strftime("%Y%m%d%H%M%S")
-    random_string = str(uuid.uuid4())[:8]
-    work_path = f"{current_time}.{calling_function}.{random_string}"
+    safe_name = "".join(c if (c.isalnum() or c in "._-") else "_" for c in calling_function)
+    if len(safe_name) > 24:
+        safe_name = safe_name[:24]
+    current_time = time.strftime("%m%d%H%M")
+    rand = f"{int.from_bytes(os.urandom(2), 'big') % 10000:04d}"
+    work_path = f"{current_time}.{safe_name}.{rand}"
     if create:
         os.makedirs(work_path, exist_ok=True)
-    
     return work_path
 
 
@@ -374,4 +380,3 @@ def collect_metrics(abacusjob: Union[str, Path],
     abacusresult = RESULT(fmt="abacus", path=abacusjob)
     
     return {i: abacusresult[i] for i in metrics_names}
-
