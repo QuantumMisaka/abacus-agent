@@ -6,10 +6,7 @@ import os
 import time
 import json
 import traceback
-import uuid
-import glob
 
-from abacusagent.modules.submodules.relax import abacus_prepare_inputs_from_relax_results
 from abacustest.lib_prepare.abacus import ReadInput
 from abacustest.lib_collectdata.collectdata import RESULT
 
