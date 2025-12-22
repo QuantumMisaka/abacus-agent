@@ -132,7 +132,46 @@ def run_abacus(job_paths: Union[str, List[str], Path, List[Path]],
             os.chdir(cwd)
             if return_code != 0:
                 raise RuntimeError(f"ABACUS command failed with error: {err}")
+    
+    elif submit_type == "sidereus":
+        # sidereus specialized local submit type
+        physical_cores = get_physical_cores()
+        # Use redirection to avoid memory issues with large logs
+        command_cmd = os.environ.get("ABACUS_COMMAND", f"OMP_NUM_THREADS=1 mpirun -np {physical_cores} abacus") + f" > {log_file} 2>&1"
+
+        for job_path in job_paths:
+            if not job_path.is_dir():
+                raise ValueError(f"{job_path} is not a valid directory.")
             
+            os.chdir(job_path)           
+            return_code, out, err = run_command([command_cmd])
+            os.chdir(cwd)
+            
+            if return_code != 0:
+                # Read the log file to get the error details (tail to avoid reading huge files)
+                error_msg = f"ABACUS command failed with return code {return_code}."
+                log_path = Path(job_path) / log_file
+                if log_path.exists():
+                    try:
+                        with open(log_path, "r", errors='replace') as f:
+                            # Read all lines is risky if file is huge, but usually for error context we need the end.
+                            # Efficiently reading the last N lines of a large file in Python can be complex,
+                            # here we read all but assume reasonable size or accept memory cost only on failure.
+                            # For safety, let's limit the preview size.
+                            f.seek(0, os.SEEK_END)
+                            file_size = f.tell()
+                            # Read last 20KB
+                            read_size = min(file_size, 20480)
+                            f.seek(file_size - read_size)
+                            content = f.read()
+                            error_msg += f"\n--- Last {len(content)} bytes of {log_file} ---\n{content}\n----------------------------------------"
+                    except Exception as e:
+                        error_msg += f"\nFailed to read log file {log_file}: {e}"
+                else:
+                    error_msg += f"\nCould not find log file: {log_path}"
+                
+                raise RuntimeError(error_msg)
+    
     elif submit_type == "bohrium":
         # use abacustest to submit the job to bohrium
         # check the environment variables is not ""
