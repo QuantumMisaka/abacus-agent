@@ -235,7 +235,7 @@ def run_abacus(job_paths: Union[str, List[str], Path, List[Path]],
         
         os.chdir(pwd)
     else:
-        raise ValueError("Invalid ABACUSAGENT_SUBMIT_TYPE. Must be 'local' or 'bohrium'.")
+        raise ValueError("Invalid ABACUSAGENT_SUBMIT_TYPE. Must be 'local', 'sidereus' or 'bohrium'.")
             
 def run_pyatb(abacus_inputs_path):
     """
