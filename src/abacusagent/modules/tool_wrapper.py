@@ -337,8 +337,7 @@ def abacus_badercharge_run(
 
     Returns:
     dict: A dictionary containing: 
-        - net_bader_charges: List of net Bader charge for each atom. Core charge is included.
-        - atom_labels: Labels of atoms in the structure.
+        - bader_results_csv: Path to the Bader results csv file.
     """
     dftu_param = transform_dftu_param(dftu_param) if dftu_param is not None else None
     init_mag = transform_initmag_param(init_mag) if init_mag is not None else None
@@ -363,8 +362,7 @@ def abacus_badercharge_run(
 
     badercharge_results = _abacus_badercharge_run(abacus_inputs_dir)
 
-    return {'net_bader_charges': badercharge_results.get('net_charges', None),
-            'atom_labels': badercharge_results.get('atom_labels', None)}
+    return {"bader_result_csv": Path(badercharge_results['bader_result_csv']).absolute()}
 
 @mcp.tool()
 def abacus_dos_run(
@@ -898,7 +896,7 @@ def abacus_vacancy_formation_energy(
     Returns:
         A dictionary containing:
         - "vacancy_formation_energy": Calculated vacancy formation energy.
-        - "supercell_job_relax_converge": If the supercell relax calculation is converged.
+        - "original_stru_job_relax_converge": If the relax calculation of original structure is converged.
         - "defect_supercell_job_relax_converge": If the defect supercell relax calculation is converged.
     """
     dftu_param = transform_dftu_param(dftu_param) if dftu_param is not None else None
@@ -933,7 +931,7 @@ def abacus_vacancy_formation_energy(
                                                            vacancy_relax_precision)
     
     return {'vacancy_formation_energy': vacancy_outputs.get('vac_formation_energy', None),
-            'supercell_job_relax_converge': vacancy_outputs.get('supercell_job_relax_converge', None),
+            'original_stru_job_relax_converge': vacancy_outputs.get('original_stru_job_relax_converge', None),
             'defect_supercell_job_relax_converge': vacancy_outputs.get('defect_supercell_job_relax_converge', None),}
 
 @mcp.tool()
