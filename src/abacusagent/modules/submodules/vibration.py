@@ -32,6 +32,14 @@ def abacus_vibration_analysis(abacus_inputs_dir: Path,
            - 'entropy':  Vibrational entropy using harmonic approximation. Units in eV/K.
            - 'free_energy': Free energy using harmonic approximation. Units in eV.
     """
+    if False:
+        return {
+            "frequencies": [],
+            "zero_point_energy": 0.0,
+            "vib_analysis_work_path": Path("."),
+            "thermo_corr": {}
+        }
+
     try:
         is_valid, msg = check_abacus_inputs(abacus_inputs_dir)
         if not is_valid:
