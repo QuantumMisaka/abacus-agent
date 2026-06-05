@@ -6,6 +6,9 @@ import os
 import time
 import json
 import traceback
+import uuid
+import shutil
+import glob
 
 from abacustest.lib_prepare.abacus import ReadInput
 from abacustest.lib_collectdata.collectdata import RESULT
@@ -121,7 +124,7 @@ def run_abacus(job_paths: Union[str, List[str], Path, List[Path]],
     
     if submit_type == "local":
         physical_cores = get_physical_cores()
-        command_cmd = os.environ.get("ABACUS_COMMAND", f"OMP_NUM_THREADS=1 mpirun -np {physical_cores} abacus") + f" > {log_file} 2>&1"     
+        command_cmd = os.environ.get("ABACUS_COMMAND", f"OMP_NUM_THREADS=1 mpirun -np {physical_cores} abacus") + f" > {log_file} 2>&1"
 
         for job_path in job_paths:
             if not job_path.is_dir():
@@ -270,7 +273,7 @@ def link_abacusjob(src: str,
     exclude (Optional[List[str]]): List of files to exclude. If None, no files are excluded.
     copy_files (List[str]): List of files to copy from src to dst. Default is ["INPUT", "STRU", "KPT"].
     overwrite (bool): If True, existing files in the destination will be overwritten. Default is True.
-    exclude_directories (bool): If True, directories will be excluded from linking. Default is False.
+    exclude_directories (bool): If True, directories will be excluded from linking or copying. Default is False.
     
     Notes: 
         - If somes files are included in both include and exclude, the file will be excluded.
@@ -287,42 +290,45 @@ def link_abacusjob(src: str,
     
     if include is None:
         include = ["*"]
-    include_files = []
+    include_paths = []
     for pattern in include:
-        include_files.extend(src.glob(pattern))
+        include_paths.extend(src.glob(pattern))
         
     if exclude is None:
         exclude = []
-    exclude_files = []
+    exclude_paths = []
     for pattern in exclude:
-        exclude_files.extend(src.glob(pattern))
+        exclude_paths.extend(src.glob(pattern))
     
     os.makedirs(dst, exist_ok=True)
     # Remove excluded files from included files
-    include_files = [f for f in include_files if f not in exclude_files]
-    if not include_files:
+    include_paths = [f for f in include_paths if f not in exclude_paths]
+    if not include_paths:
         traceback.print_stack()
         print("No files to link after applying include and exclude patterns.\n",
               f"Include patterns: {include}, Exclude patterns: {exclude}, Source: {src}, Destination: {dst}\n",
               f"Files in source: {list(src.glob('*'))}"
               )
     else:
-        for file in include_files:
-            if file == dst:
+        for path in include_paths:
+            if path == dst:
                 continue
-            if exclude_directories and os.path.isdir(file):
+            if exclude_directories and path.is_dir():
                 continue
-            
-            dst_file = dst / file.name
-            if dst_file.exists():
+
+            dst_path = dst / path.name
+            if dst_path.exists():
                 if overwrite:
-                    dst_file.unlink()
+                    dst_path.unlink()
                 else:
                     continue
-            if str(file.name) in copy_files:
-                os.system(f"cp {file} {dst_file}")
+            if str(path.name) in copy_files or str(path) in copy_files:
+                if os.path.isfile(path):
+                    shutil.copy(path, dst_path)
+                else:
+                    shutil.copytree(path, dst_path)
             else:
-                os.symlink(file, dst_file)
+                os.symlink(path, dst_path)
             
             
 def generate_work_path(create: bool = True) -> str:
