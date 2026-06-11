@@ -1,6 +1,7 @@
 """
 Use Pyatb to do property calculation.
 """
+import inspect
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Literal, Union, Optional
@@ -18,6 +19,38 @@ from pyatb.easy_use.input_generator import *
 from pyatb.easy_use.stru_analyzer import read_abacus_stru
 
 from abacusagent.modules.util.comm import collect_metrics
+
+
+def generate_input_chern_compatible(
+    input_text,
+    n_occu,
+    occu_switch,
+    dim,
+    lattice_vectors,
+    method,
+    mp_density,
+):
+    """Call pyatb's Chern input helper across the 1.1.1/1.1.2 signature change."""
+    params = inspect.signature(generate_input_chern).parameters
+    if "mp_density" in params:
+        return generate_input_chern(
+            input_text,
+            n_occu,
+            occu_switch,
+            dim,
+            lattice_vectors,
+            method,
+            mp_density,
+        )
+    return generate_input_chern(
+        input_text,
+        n_occu,
+        occu_switch,
+        dim,
+        lattice_vectors,
+        method,
+    )
+
 
 def property_calculation_scf(
     abacus_inputs_path: Path,
@@ -269,7 +302,7 @@ class PyatbInputGenerator:
         if self.shift:
             input_text = generate_input_shift(input_text, self.dim, lattice_vectors, noccu_band, omega_range, self.mp)
         if self.chern:
-            input_text = generate_input_chern(input_text,  noccu_band, self.occu, self.dim, lattice_vectors, self.method)
+            input_text = generate_input_chern_compatible(input_text,  noccu_band, self.occu, self.dim, lattice_vectors, self.method, self.mp)
         if self.wilson_loop:
             input_text = generate_input_wilsonloop(input_text,  noccu_band, self.occu, self.dim, lattice_vectors, self.method)
         

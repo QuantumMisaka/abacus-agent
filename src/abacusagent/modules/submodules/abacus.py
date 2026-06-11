@@ -10,7 +10,6 @@ from abacustest.lib_prepare.abacus import AbacusStru, ReadInput, WriteInput
 from abacustest.lib_collectdata.collectdata import RESULT
 from abacustest.lib_model.comm import check_abacus_inputs
 
-from abacusagent.init_mcp import mcp
 from abacusagent.modules.util.comm import generate_work_path, run_abacus, collect_metrics
 import tempfile
 from pymatgen.ext.matproj import MPRester
@@ -617,4 +616,3 @@ def read_abacus_stru(abacus_input_dir: Path):
                 'move': stru.get_move()}
     except Exception as e:
         return {'message': f"Read ABACUS STRU file failed: {e}"}
-

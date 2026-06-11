@@ -3,7 +3,10 @@ import glob
 from abacustest.lib_prepare.abacus import ReadInput, WriteInput
 from abacustest.lib_collectdata.collectdata import RESULT
 from abacustest.lib_model.comm import check_abacus_inputs
-from abacustest.lib_model.comm_dos import DOSData, PDOSData, l_map, orbital_names
+try:
+    from abacustest.lib_model.model_021_dos_pdos import DOSData, PDOSData
+except ImportError:
+    from abacustest.lib_model.comm_dos import DOSData, PDOSData
 
 from pathlib import Path
 from typing import Dict, Any, List, Literal, Optional, Tuple

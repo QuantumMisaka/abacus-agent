@@ -11,7 +11,6 @@ from phonopy.phonon.band_structure import get_band_qpoints_by_seekpath, get_band
 from abacustest.lib_prepare.abacus import ReadInput, WriteInput, AbacusStru
 from abacustest.lib_model.comm import check_abacus_inputs
 
-from abacusagent.init_mcp import mcp
 from abacusagent.constant import THZ_TO_K
 from abacusagent.modules.util.comm import run_abacus, generate_work_path, link_abacusjob, collect_metrics
 
