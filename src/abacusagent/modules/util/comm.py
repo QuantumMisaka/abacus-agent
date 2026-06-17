@@ -16,14 +16,16 @@ from abacustest.lib_collectdata.collectdata import RESULT
 
 def run_command(
         cmd,
-        shell=True
+        shell=True,
+        env=None,
 ):
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         shell=shell,
-        executable='/bin/bash'
+        executable='/bin/bash',
+        env=env,
     )
     out = ""
     err = ""
@@ -103,6 +105,27 @@ def get_physical_cores():
                 sockets = int(line.split(':')[1].strip())
         return cores_per_socket * sockets
 
+def resolve_abacus_runtime_command(physical_cores: int) -> Tuple[str, Optional[Dict[str, str]]]:
+    """Resolve ABACUS execution command and optional process environment.
+
+    ``ABACUS_COMMAND`` is the single source for launcher, MPI arguments, and
+    executable. ``ABACUS_OMP_THREADS`` only maps to child ``OMP_NUM_THREADS``.
+    Legacy shell-style commands remain untouched when ``ABACUS_OMP_THREADS`` is
+    unset.
+    """
+    command = os.environ.get(
+        "ABACUS_COMMAND",
+        f"OMP_NUM_THREADS=1 mpirun -np {physical_cores} abacus",
+    )
+    omp_threads = os.environ.get("ABACUS_OMP_THREADS")
+    if omp_threads:
+        if int(omp_threads) < 1:
+            raise ValueError("ABACUS_OMP_THREADS must be a positive integer.")
+        runtime_env = os.environ.copy()
+        runtime_env["OMP_NUM_THREADS"] = str(omp_threads)
+        return command, runtime_env
+    return command, None
+
 def run_abacus(job_paths: Union[str, List[str], Path, List[Path]],
                log_file: Optional[str] = "abacus.log") -> None:
     """
@@ -124,15 +147,18 @@ def run_abacus(job_paths: Union[str, List[str], Path, List[Path]],
     
     if submit_type == "local":
         physical_cores = get_physical_cores()
-        command_cmd = os.environ.get("ABACUS_COMMAND", f"OMP_NUM_THREADS=1 mpirun -np {physical_cores} abacus") + f" > {log_file} 2>&1"
+        command, runtime_env = resolve_abacus_runtime_command(physical_cores)
+        command_cmd = command + f" > {log_file} 2>&1"
 
         for job_path in job_paths:
             if not job_path.is_dir():
                 raise ValueError(f"{job_path} is not a valid directory.")
             
-            os.chdir(job_path)           
-            return_code, out, err = run_command([command_cmd])
-            os.chdir(cwd)
+            try:
+                os.chdir(job_path)
+                return_code, out, err = run_command([command_cmd], env=runtime_env)
+            finally:
+                os.chdir(cwd)
             if return_code != 0:
                 raise RuntimeError(f"ABACUS command failed with error: {err}")
     
@@ -140,15 +166,18 @@ def run_abacus(job_paths: Union[str, List[str], Path, List[Path]],
         # sidereus specialized local submit type
         physical_cores = get_physical_cores()
         # Use redirection to avoid memory issues with large logs
-        command_cmd = os.environ.get("ABACUS_COMMAND", f"OMP_NUM_THREADS=1 mpirun -np {physical_cores} abacus") + f" > {log_file} 2>&1"
+        command, runtime_env = resolve_abacus_runtime_command(physical_cores)
+        command_cmd = command + f" > {log_file} 2>&1"
 
         for job_path in job_paths:
             if not job_path.is_dir():
                 raise ValueError(f"{job_path} is not a valid directory.")
             
-            os.chdir(job_path)           
-            return_code, out, err = run_command([command_cmd])
-            os.chdir(cwd)
+            try:
+                os.chdir(job_path)
+                return_code, out, err = run_command([command_cmd], env=runtime_env)
+            finally:
+                os.chdir(cwd)
             
             if return_code != 0:
                 # Read the log file to get the error details (tail to avoid reading huge files)
@@ -246,13 +275,21 @@ def run_pyatb(abacus_inputs_path):
     The abacus_inputs_path are limited to a single path now.
     """
     original_dir = os.getcwd()
-    os.chdir(abacus_inputs_path)
     pyatb_command = os.getenv("PYATB_COMMAND", "OMP_NUM_THREADS=1 pyatb")
-    return_code, out, err = run_command(pyatb_command)
-    if return_code != 0:
-        raise RuntimeError(f"pyatb failed with return code {return_code}, out: {out}, err: {err}")
-    
-    os.chdir(original_dir)
+    runtime_env = None
+    omp_threads = os.environ.get("PYATB_OMP_THREADS")
+    if omp_threads:
+        if int(omp_threads) < 1:
+            raise ValueError("PYATB_OMP_THREADS must be a positive integer.")
+        runtime_env = os.environ.copy()
+        runtime_env["OMP_NUM_THREADS"] = str(omp_threads)
+    try:
+        os.chdir(abacus_inputs_path)
+        return_code, out, err = run_command(pyatb_command, env=runtime_env)
+        if return_code != 0:
+            raise RuntimeError(f"pyatb failed with return code {return_code}, out: {out}, err: {err}")
+    finally:
+        os.chdir(original_dir)
 
 
 def link_abacusjob(src: str, 
