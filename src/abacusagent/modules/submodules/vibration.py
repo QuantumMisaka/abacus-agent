@@ -9,7 +9,8 @@ from abacusagent.modules.util.comm import generate_work_path, link_abacusjob, ru
 def abacus_vibration_analysis(abacus_inputs_dir: Path,
                               selected_atoms: Optional[List[int]] = None,
                               stepsize: float = 0.01,
-                              temperature: Optional[float] = 298.15):
+                              temperature: Optional[float] = 298.15,
+                              note=None):
     """
     Performing vibrational analysis using finite displacement method.
     This tool function is usually followed by a relax calculation (`calculation` is set to `relax`).
@@ -20,6 +21,7 @@ def abacus_vibration_analysis(abacus_inputs_dir: Path,
         stepsize (float): Step size to displace cartesian coordinates of atoms during the vibrational analysis.
             Units in Angstrom. The default value (0.01 Angstrom) is generally OK.
         temperature (float): Temperature used to calculate thermodynamic quantities. Units in Kelvin.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         A dictionary containing the following keys:
         - 'frequencies': List of real frequencies from vibrational analysis. Imaginary frequencies are represented by negative 
@@ -41,7 +43,7 @@ def abacus_vibration_analysis(abacus_inputs_dir: Path,
         if stepsize <= 0:
             raise ValueError("stepsize should be positive.")
         
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
         link_abacusjob(src=abacus_inputs_dir,
                        dst=work_path,
                        copy_files=["INPUT", "STRU", "KPT"],
@@ -61,4 +63,3 @@ def abacus_vibration_analysis(abacus_inputs_dir: Path,
         import traceback
         traceback.print_exc()
         return {'message': f"Doing vibration analysis failed: {e}"}
-

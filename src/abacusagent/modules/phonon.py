@@ -12,7 +12,8 @@ def abacus_phonon_dispersion(
     temperature: Optional[float] = 298.15,
     min_supercell_length: float = 10.0,
     qpath: Optional[Union[List[str], List[List[str]]]] = None,
-    high_symm_points: Optional[Dict[str, List[float]]] = None
+    high_symm_points: Optional[Dict[str, List[float]]] = None,
+    note: Optional[str] = None,
 ):
     """
     Calculate phonon dispersion with finite-difference method using Phonopy with ABACUS as the calculator. 
@@ -52,5 +53,6 @@ def abacus_phonon_dispersion(
         temperature,
         min_supercell_length,
         qpath,
-        high_symm_points
+        high_symm_points,
+        note=note,
     )

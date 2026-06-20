@@ -30,6 +30,7 @@ def abacus_prepare(
     init_mag: Optional[Dict[str, float]] = None,
     afm: bool = False,
     extra_input: Optional[Dict[str, Any]] = None,
+    note=None,
 ) -> Dict[str, Any]:
     """
     Prepare mandatory input files for ABACUS calculation from a structure file.
@@ -59,6 +60,7 @@ def abacus_prepare(
         init_mag ( dict or None): The initial magnetic moment for magnetic elements, should be a dict like {"Fe": 4, "Ti": 1}, where the key is the element symbol and the value is the initial magnetic moment.
         afm (bool): Whether to use antiferromagnetic calculation, default is False. If True, half of the magnetic elements will be set to negative initial magnetic moment.
         extra_input: Extra input parameters in the prepared INPUT file. 
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     
     Returns:
         A dictionary containing the job path.
@@ -88,7 +90,7 @@ def abacus_prepare(
         if lcao and not os.path.exists(orb_path):
             raise FileNotFoundError(f"Orbital library path {orb_path} does not exist.")
 
-        work_path = generate_work_path()
+        work_path = generate_work_path(note=note)
         pwd = os.getcwd()
         os.chdir(work_path)
         try:

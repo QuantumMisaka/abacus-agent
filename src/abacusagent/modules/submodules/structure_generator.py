@@ -65,6 +65,7 @@ def generate_bulk_structure(element: str,
                             cubic: bool =False,
                             orthorhombic: bool =False,
                             file_format: Literal["cif", "poscar"] = "cif",
+                            note=None,
                             ) -> Dict[str, Any]:
     """
     Generate a bulk crystal structure using ASE's `bulk` function.
@@ -84,6 +85,7 @@ def generate_bulk_structure(element: str,
         cubic (bool, optional): If constructing a cubic supercell for fcc, bcc, diamond, zincblende, or rocksalt structures.
         orthorhombic (bool, optional): If constructing orthorhombic cell for 'hcp' structure.
         file_format (str, optional): The format of the output file. Options are 'cif' or 'poscar'. Default is 'cif'.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     
     Notes: all crystal need the lattice constant a, which is the length of the unit cell (or conventional cell).
 
@@ -126,7 +128,7 @@ def generate_bulk_structure(element: str,
             a=a,
             **special_params
         )
-        work_path = generate_work_path(create=True)
+        work_path = generate_work_path(note=note, create=True)
 
         if file_format == "cif":
             structure_file = f"{work_path}/{element}_{crystal_structure}.cif"
@@ -153,7 +155,8 @@ def generate_bulk_structure_from_wyckoff_position(
     spacegroup: str | int,
     wyckoff_positions: List[Tuple[str, List[float], str]],
     crystal_name: str = 'crystal',
-    format: Literal["cif", "poscar"] = "cif"
+    format: Literal["cif", "poscar"] = "cif",
+    note=None,
 ) -> Dict[str, Any]:
     """
     Generate crystal structure from lattice parameters, space group and wyckoff positions.
@@ -166,6 +169,7 @@ def generate_bulk_structure_from_wyckoff_position(
             the first is the symbol of the element, the second is the fractional coordinate, and the third is symbol of the wyckoff position.
         crystal_name (str, optional): Filename of the generated structure file without extension. Defaults to 'crystal'.
         format (str, optional): Format of the generated structure file. Defaults to 'cif'.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     
     Returns:
         Path to the generated crystal structure file.
@@ -183,7 +187,7 @@ def generate_bulk_structure_from_wyckoff_position(
             tol=0.001,
         )
 
-        work_path = generate_work_path(create=True)
+        work_path = generate_work_path(note=note, create=True)
         
         crys_file_name = Path(f"{work_path}/{crystal_name}.{format}").absolute()
         write(crys_file_name, crys_stru.to_ase_atoms(), format)
@@ -224,7 +228,8 @@ def generate_molecule_structure(
                            'Mc', 'Lv', 'Ts', 'Og'] = "H2O",
     cell: Optional[List[List[float]]] = [[10.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 0.0, 10.0]],
     vacuum: Optional[float] = 5.0,
-    output_file_format: Literal["cif", "poscar", "abacus"] = "abacus") -> Dict[str, Any]:
+    output_file_format: Literal["cif", "poscar", "abacus"] = "abacus",
+    note=None) -> Dict[str, Any]:
     """
     Generate molecule structure from ase's collection of molecules or single atoms.
     Args:
@@ -233,6 +238,7 @@ def generate_molecule_structure(
         cell: The cell parameters for the generated structure. Default is a 10x10x10 Angstrom cell. Units in angstrom.
         vacuum: The vacuum space to add around the molecule. Default is 5.0 Angstrom.
         output_file_format: The format of the output file. Default is 'abacus'. 'poscar' represents POSCAR format used by VASP.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         A dictionary containing:
         - structure_file: The absolute path to the generated structure file.
@@ -249,7 +255,7 @@ def generate_molecule_structure(
         elif molecule_name in chemical_symbols and molecule_name != "X":
             atoms = Atoms(symbol=molecule_name, positions=[[0, 0, 0]], cell=cell)
 
-        work_path = generate_work_path(create=True)
+        work_path = generate_work_path(note=note, create=True)
         
         if output_file_format == "abacus":
             stru_file_path = Path(f"{work_path}/{molecule_name}.stru").absolute()

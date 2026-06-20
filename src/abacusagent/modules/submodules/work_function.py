@@ -11,6 +11,7 @@ def abacus_cal_work_function(
     abacus_inputs_dir: Path,
     vacuum_direction: Literal['a', 'b', 'c', 'auto'] = 'c',
     dipole_correction: bool = False,
+    note=None,
 ) -> Dict[str, Any]:
     """
     Calculate the electrostatic potential and work function using ABACUS.
@@ -19,6 +20,7 @@ def abacus_cal_work_function(
         abacus_inputs_dir (Path): Path to the ABACUS input files, which contains the INPUT, STRU, KPT, and pseudopotential or orbital files.
         vacuum_direction (Literal['a', 'b', 'c', 'auto']): The direction of the vacuum. If set to auto, the direction will try to be determined automatically.
         dipole_correction (bool): Whether to apply dipole correction along the vacuum direction. For polar slabs, it is recommended to enable dipole correction.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
 
     Returns:
         A dictionary containing:
@@ -37,7 +39,7 @@ def abacus_cal_work_function(
         if not is_valid:
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
         
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
         link_abacusjob(src=abacus_inputs_dir,dst=work_path,copy_files=["INPUT", "STRU"], exclude_directories=True)
         workfunc_work_dir = prep_abacus_workfunc_calc(work_path, vacuum_direction, dipole_correction, os.path.join(work_path, "workfunc_job"))
         

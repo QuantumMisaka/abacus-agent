@@ -36,15 +36,17 @@ def plot_jdos_pyatb(
 
 def pyatb_calculate_jdos(
     abacus_inputs_path: Path,
+    note=None,
 ) -> Dict[str, Any]:
     """
     Plot the joint density of states (JDOS) using pyatb after ABACUS SCF calculation.
     Args:
         abacus_inputs_path (Path): The path to the ABACUS input files.
+        note: Optional task label used to name the generated SCF/JDOS work directory. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         Dict[str, Any]: A dictionary containing path to the plotted JDOS.
     """
-    scf_results = property_calculation_scf(abacus_inputs_path, mode='pyatb')
+    scf_results = property_calculation_scf(abacus_inputs_path, mode='pyatb', note=note)
 
     if not scf_results["normal_end"]:
         raise RuntimeError("SCF calculation did not finish successfully.")

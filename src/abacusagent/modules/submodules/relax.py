@@ -17,6 +17,7 @@ def abacus_do_relax(
     fixed_axes: Optional[Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"]] = None,
     relax_method: Optional[Literal["cg", "bfgs", "bfgs_trad", "cg_bfgs", "sd", "fire"]] = None,
     relax_new: Optional[bool] = None,
+    note=None,
 ) -> Dict[str, Any]:
     """
     Perform relaxation calculations using ABACUS based on the provided input files. The results of the relaxation and 
@@ -40,6 +41,7 @@ def abacus_do_relax(
             - bc: fix both b and c axes  
         relax_method: The relaxation method to use, can be 'cg', 'bfgs', 'bfgs_trad', 'cg_bfgs', 'sd', or 'fire'. Default is 'cg'.
         relax_new: If use new implemented CG method, default is True.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
 
     Returns:
         A dictionary containing:
@@ -84,7 +86,7 @@ def abacus_do_relax(
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
         
         abacus_inputs_dir = Path(abacus_inputs_dir).absolute()
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
         link_abacusjob(src=abacus_inputs_dir,
                        dst=work_path,
                        copy_files=["INPUT", "STRU", "KPT"])
@@ -116,7 +118,8 @@ def abacus_do_relax(
 
 
 def abacus_prepare_inputs_from_relax_results(
-    relax_jobpath: Path
+    relax_jobpath: Path,
+    note=None,
 )-> Dict[str, Any]:
     """
     Prepare ABACUS input files based on the structure of the last relaxation step.
@@ -124,6 +127,7 @@ def abacus_prepare_inputs_from_relax_results(
     
     Args:
         relax_jobpath: Path to the relaxation results.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     
     Returns:
         A dictionary containing the job path.
@@ -140,7 +144,7 @@ def abacus_prepare_inputs_from_relax_results(
             raise FileNotFoundError(f"We can not find the structure file of last relax step {final_stru}. \
                 Please check the path and ensure the relaxation calculation has completed successfully.")
 
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
 
         link_abacusjob(
             src=relax_jobpath,
@@ -223,4 +227,3 @@ def relax_postprocess(work_path: Path) -> Dict[str, Any]:
     return collect_metrics(work_path, 
                           metrics_names=["normal_end", "relax_steps", "largest_gradient",
                                          "largest_gradient_stress", "relax_converge", "energies"])
-

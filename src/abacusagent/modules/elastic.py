@@ -1,7 +1,7 @@
 """
 Calculating elastic constants using ABACUS.
 """
-from typing import Dict
+from typing import Dict, Optional
 from pathlib import Path
 
 from abacusagent.init_mcp import mcp
@@ -13,7 +13,8 @@ def abacus_cal_elastic(
     norm_strain: float = 0.01,
     shear_strain: float = 0.01,
     kspacing: float = 0.08,
-    relax_force_thr_ev: float = 0.01
+    relax_force_thr_ev: float = 0.01,
+    note: Optional[str] = None,
 ) -> Dict[str, float]:
     """
     Calculate various elastic constants for a given structure using ABACUS. 
@@ -35,4 +36,11 @@ def abacus_cal_elastic(
     Raises:
         RuntimeError: If ABACUS calculation when calculating stress for input structure or deformed structures fails.
     """
-    return _abacus_cal_elastic(abacus_inputs_dir, norm_strain, shear_strain, kspacing, relax_force_thr_ev)
+    return _abacus_cal_elastic(
+        abacus_inputs_dir,
+        norm_strain,
+        shear_strain,
+        kspacing,
+        relax_force_thr_ev,
+        note=note,
+    )

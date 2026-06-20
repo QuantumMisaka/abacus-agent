@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 from abacusagent.init_mcp import mcp
 from abacusagent.modules.submodules.eos import abacus_eos as _abacus_eos
@@ -8,7 +8,8 @@ from abacusagent.modules.submodules.eos import abacus_eos as _abacus_eos
 def abacus_eos(
     abacus_inputs_dir: Path,
     stru_scale_number: int = 3,
-    scale_stepsize: float = 0.02
+    scale_stepsize: float = 0.02,
+    note: Optional[str] = None,
 ):
     """
     Use Birch-Murnaghan equation of state (EOS) to calculate the EOS data. The shape of fitted crystal is limited to cubic now.
@@ -27,4 +28,4 @@ def abacus_eos(
             - "B0" (float): Bulk modulus (in GPa) at equilibrium volume.
             - "B0_deriv" (float): Pressure derivative of the bulk modulus.
     """
-    return _abacus_eos(abacus_inputs_dir, stru_scale_number, scale_stepsize)
+    return _abacus_eos(abacus_inputs_dir, stru_scale_number, scale_stepsize, note=note)

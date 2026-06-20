@@ -8,7 +8,8 @@ from abacusagent.modules.submodules.vibration import abacus_vibration_analysis a
 def abacus_vibration_analysis(abacus_inputs_dir: Path,
                               selected_atoms: Optional[List[int]] = None,
                               stepsize: float = 0.01,
-                              temperature: Optional[float] = 298.15):
+                              temperature: Optional[float] = 298.15,
+                              note: Optional[str] = None):
     """
     Performing vibrational analysis using finite displacement method.
     This tool function is usually followed by a relax calculation (`calculation` is set to `relax`).
@@ -31,4 +32,4 @@ def abacus_vibration_analysis(abacus_inputs_dir: Path,
            - 'entropy':  Vibrational entropy using harmonic approximation. Units in eV/K.
            - 'free_energy': Free energy using harmonic approximation. Units in eV.
     """
-    return _abacus_vibration_analysis(abacus_inputs_dir, selected_atoms, stepsize, temperature)
+    return _abacus_vibration_analysis(abacus_inputs_dir, selected_atoms, stepsize, temperature, note=note)

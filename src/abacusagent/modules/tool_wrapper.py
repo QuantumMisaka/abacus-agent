@@ -64,10 +64,14 @@ def prepare_abacus_inputs(
     dftu_param: Optional[Union[Dict[str, Union[float, Tuple[Literal["p", "d", "f"], float]]],
                          Literal['auto']]] = None,
     init_mag: Optional[Dict[str, float]] = None,
+    note: Optional[str] = None,
     #afm: bool = False,
 ) -> Dict[str, Any]:
     """
     Commom prepare ABACUS inputs for ABACUS calculation in this file.
+
+    Args:
+        note: Optional task label forwarded to generated input/work-directory naming.
     """
     extra_input = {}
     if dft_functional in ['PBE', 'PBEsol', 'LDA', 'SCAN']:
@@ -90,7 +94,8 @@ def prepare_abacus_inputs(
                                             dftu_param=dftu_param,
                                             init_mag=init_mag,
                                             #afm=afm,
-                                            extra_input=extra_input)
+                                            extra_input=extra_input,
+                                            note=note)
     
     abacus_inputs_dir = abacus_prepare_outputs['abacus_inputs_dir']
     
@@ -103,6 +108,7 @@ def do_relax(
     relax_precision: Literal['low', 'medium', 'high'] = 'medium',
     fixed_axes: Optional[Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"]] = None,
     relax_method: Optional[Literal["cg", "bfgs", "bfgs_trad", "cg_bfgs", "sd", "fire"]] = None,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Do relax calculation using ABACUS.
@@ -120,7 +126,8 @@ def do_relax(
                                      max_steps=max_steps,
                                      relax_cell=relax_cell,
                                      relax_method=relax_method,
-                                     fixed_axes=fixed_axes)
+                                     fixed_axes=fixed_axes,
+                                     note=note)
     
     if relax_outputs['normal_end'] is False:
         raise ValueError('Relaxation calculation failed')
@@ -146,6 +153,7 @@ def abacus_calculation_scf(
     dftu: bool = False,
     dftu_param: DFTUParam = None,
     init_mag: InitMagParam = None,
+    note: Optional[str] = None,
     #afm: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -169,6 +177,7 @@ def abacus_calculation_scf(
             - 'element': List of elements to apply initial magnetic moment to.
             - 'mag': List of initial magnetic moments for each element.
             The length of list for each key in init_mag should be the same.
+        note: Optional task label forwarded to generated input/work-directory naming.
 
     Returns:
         A dictionary containing whether the SCF calculation finished normally, the SCF is converged or not and the converged SCF energy.
@@ -182,9 +191,10 @@ def abacus_calculation_scf(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
-    results =  _abacus_calculation_scf(abacus_inputs_dir)
+    results =  _abacus_calculation_scf(abacus_inputs_dir, note=note)
 
     return {'energy': results.get('energy', None),
             'converge': results.get('converge', None),
@@ -207,6 +217,7 @@ def abacus_do_relax(
     relax_precision: Literal['low', 'medium', 'high'] = 'medium',
     relax_method: Literal["cg", "bfgs", "bfgs_trad", "cg_bfgs", "sd", "fire"] = "cg",
     fixed_axes: Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"] = None,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Perform relaxation calculations using ABACUS based on the provided input files. The results of the relaxation and 
@@ -261,14 +272,16 @@ def abacus_do_relax(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
                              max_steps=max_steps,
                              relax_cell=relax_cell,
                              relax_precision=relax_precision,
                              fixed_axes=fixed_axes,
-                             relax_method=relax_method)
+                             relax_method=relax_method,
+                             note=note)
 
     return {'final_stru': relax_outputs.get('final_stru', None),
             'relax_converge': relax_outputs.get('relax_converge', None),
@@ -292,6 +305,7 @@ def abacus_badercharge_run(
     relax_precision: Literal['low', 'medium', 'high'] = 'medium',
     relax_method: Literal["cg", "bfgs", "bfgs_trad", "cg_bfgs", "sd", "fire"] = "cg",
     fixed_axes: Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"] = None,
+    note: Optional[str] = None,
 ) -> List[float]:
     """
     Calculate Bader charges for a given structure file, with ABACUS as
@@ -348,7 +362,8 @@ def abacus_badercharge_run(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -356,11 +371,12 @@ def abacus_badercharge_run(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
 
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
 
-    badercharge_results = _abacus_badercharge_run(abacus_inputs_dir)
+    badercharge_results = _abacus_badercharge_run(abacus_inputs_dir, note=note)
 
     return {"bader_result_csv": Path(badercharge_results['bader_result_csv']).absolute()}
 
@@ -388,6 +404,7 @@ def abacus_dos_run(
     dos_sigma: float = 0.07,
     dos_emin_ev: float = -10.0,
     dos_emax_ev: float = 10.0,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Run the DOS and PDOS calculation.
@@ -461,7 +478,8 @@ def abacus_dos_run(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -469,7 +487,8 @@ def abacus_dos_run(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
 
     dos_results = _abacus_dos_run(abacus_inputs_dir,
@@ -478,7 +497,8 @@ def abacus_dos_run(
                                   dos_edelta_ev,
                                   dos_sigma,
                                   dos_emin_ev,
-                                  dos_emax_ev)
+                                  dos_emax_ev,
+                                  note=note)
     
     return {'dos_fig_path': dos_results.get('dos_fig_path', None),
             'pdos_fig_path': dos_results.get('pdos_fig_path', None),
@@ -510,7 +530,8 @@ def abacus_cal_band(
     mode: Literal["nscf", "pyatb", "auto"] = "auto",
     energy_min: float = -10,
     energy_max: float = 10,
-    insert_point_nums: int = 30
+    insert_point_nums: int = 30,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate band using ABACUS for the given structure.
@@ -576,7 +597,8 @@ def abacus_cal_band(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -584,7 +606,8 @@ def abacus_cal_band(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
     
     band_calculation_outputs = _abacus_cal_band(abacus_inputs_dir,
@@ -593,7 +616,8 @@ def abacus_cal_band(
                                                 high_symm_points=None,
                                                 energy_min=energy_min,
                                                 energy_max=energy_max,
-                                                insert_point_nums=insert_point_nums)
+                                                insert_point_nums=insert_point_nums,
+                                                note=note)
     
     return {'band_gap': band_calculation_outputs.get('band_gap', None),
             'band_picture': band_calculation_outputs.get('band_picture', None),
@@ -621,6 +645,7 @@ def abacus_phonon_dispersion(
     displacement_stepsize: float = 0.01,
     temperature: Optional[float] = 298.15,
     min_supercell_length: float = 10.0,
+    note: Optional[str] = None,
     #qpath: Optional[Union[List[str], List[List[str]]]] = None,
     #high_symm_points: Optional[Dict[str, List[float]]] = None
 ) -> Dict[str, Any]:
@@ -689,7 +714,8 @@ def abacus_phonon_dispersion(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -697,7 +723,8 @@ def abacus_phonon_dispersion(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
     
     phonon_outputs = _abacus_phonon_dispersion(abacus_inputs_dir,
@@ -706,7 +733,8 @@ def abacus_phonon_dispersion(
                                                temperature,
                                                min_supercell_length,
                                                qpath=None,
-                                               high_symm_points=None)
+                                               high_symm_points=None,
+                                               note=note)
     
     return {'band_dos_plot': phonon_outputs.get('band_dos_plot', None),
             'entropy': phonon_outputs.get('entropy', None),
@@ -736,7 +764,8 @@ def abacus_cal_elastic(
     norm_strain: float = 0.01,
     shear_strain: float = 0.01,
     kspacing: float = 0.08,
-    relax_force_thr_ev: float = 0.01
+    relax_force_thr_ev: float = 0.01,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate various elastic constants for a given structure using ABACUS. 
@@ -799,7 +828,8 @@ def abacus_cal_elastic(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -807,14 +837,16 @@ def abacus_cal_elastic(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
     
     elactic_outputs = _abacus_cal_elastic(abacus_inputs_dir,
                                           norm_strain,
                                           shear_strain,
                                           kspacing,
-                                          relax_force_thr_ev)
+                                          relax_force_thr_ev,
+                                          note=note)
     
     return {'elastic_tensor': elactic_outputs.get('elastic_tensor', None),
             'bulk_modulus': elactic_outputs.get('bulk_modulus', None),
@@ -843,6 +875,7 @@ def abacus_vacancy_formation_energy(
     supercell: List[int] = [1, 1, 1],
     vacancy_index: int = 1,
     vacancy_relax_precision: Literal['low', 'medium', 'high'] = 'low',
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate vacancy formation energy. Currenly only non-charged vacancy of limited elements are suppoted. 
@@ -909,7 +942,8 @@ def abacus_vacancy_formation_energy(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -917,7 +951,8 @@ def abacus_vacancy_formation_energy(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
     
     if stru_type in ['cif', 'poscar']:
@@ -929,7 +964,8 @@ def abacus_vacancy_formation_energy(
     vacancy_outputs = _abacus_cal_vacancy_formation_energy(abacus_inputs_dir,
                                                            supercell,
                                                            vacancy_index,
-                                                           vacancy_relax_precision)
+                                                           vacancy_relax_precision,
+                                                           note=note)
     
     return {'vacancy_formation_energy': vacancy_outputs.get('vac_formation_energy', None),
             'original_stru_job_relax_converge': vacancy_outputs.get('original_stru_job_relax_converge', None),
@@ -955,6 +991,7 @@ def abacus_cal_work_function(
     fixed_axes: Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"] = None,
     vacuum_direction: Literal['x', 'y', 'z'] = 'z',
     dipole_correction: bool = False,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate the electrostatic potential and work function using ABACUS.
@@ -1017,7 +1054,8 @@ def abacus_cal_work_function(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -1025,12 +1063,14 @@ def abacus_cal_work_function(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
     
     work_function_outputs = _abacus_cal_work_function(abacus_inputs_dir,
                                                       vacuum_direction,
-                                                      dipole_correction)
+                                                      dipole_correction,
+                                                      note=note)
     
     return {'elecstat_pot_file': work_function_outputs.get('elecstat_pot_file', None),
             'averaged_elecstat_pot_plot': work_function_outputs.get('averaged_elecstat_pot_plot', None),
@@ -1054,6 +1094,7 @@ def abacus_cal_elf(
     relax_precision: Literal['low', 'medium', 'high'] = 'medium',
     relax_method: Literal["cg", "bfgs", "bfgs_trad", "cg_bfgs", "sd", "fire"] = "cg",
     fixed_axes: Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"] = None,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate electron localization function (ELF) using ABACUS.
@@ -1106,7 +1147,8 @@ def abacus_cal_elf(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -1114,10 +1156,11 @@ def abacus_cal_elf(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
     
-    elf_outputs = _abacus_cal_elf(abacus_inputs_dir)
+    elf_outputs = _abacus_cal_elf(abacus_inputs_dir, note=note)
 
     return {'elf_file': elf_outputs.get('elf_file', None)}
 
@@ -1140,7 +1183,8 @@ def abacus_eos(
     relax_method: Literal["cg", "bfgs", "bfgs_trad", "cg_bfgs", "sd", "fire"] = "cg",
     fixed_axes: Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"] = None,
     stru_scale_number: int = 3,
-    scale_stepsize: float = 0.02
+    scale_stepsize: float = 0.02,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Use Birch-Murnaghan equation of state (EOS) to calculate the EOS data. The shape of fitted crystal is limited to cubic now.
@@ -1201,7 +1245,8 @@ def abacus_eos(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -1209,12 +1254,14 @@ def abacus_eos(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
     
     eos_outputs = _abacus_eos(abacus_inputs_dir,
                               stru_scale_number,
-                              scale_stepsize)
+                              scale_stepsize,
+                              note=note)
     
     return {'eos_fig_path': eos_outputs.get('eos_fig_path', None),
             'E0': eos_outputs.get('E0', None),
@@ -1249,7 +1296,8 @@ def abacus_run_md(
     md_pmode: Literal['iso', 'aniso', 'tri'] = 'iso',
     md_pcouple: Literal['none', 'xy', 'xz', 'yz', 'xyz'] = 'none',
     md_dumpfreq: int = 1,
-    md_seed: int = -1
+    md_seed: int = -1,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Use ABACUS to do ab-initio molecular dynamics calculation.
@@ -1339,7 +1387,8 @@ def abacus_run_md(
                                               dft_functional=dft_functional,
                                               dftu=dftu,
                                               dftu_param=dftu_param,
-                                              init_mag=init_mag)
+                                              init_mag=init_mag,
+                                              note=note)
     
     if relax:
         relax_outputs = do_relax(abacus_inputs_dir=abacus_inputs_dir,
@@ -1347,7 +1396,8 @@ def abacus_run_md(
                                  relax_cell=relax_cell,
                                  relax_precision=relax_precision,
                                  fixed_axes=fixed_axes,
-                                 relax_method=relax_method)
+                                 relax_method=relax_method,
+                                 note=note)
         abacus_inputs_dir = relax_outputs['new_abacus_inputs_dir']
     
     md_outputs = _abacus_run_md(abacus_inputs_dir,
@@ -1360,7 +1410,8 @@ def abacus_run_md(
                                md_pmode,
                                md_pcouple,
                                md_dumpfreq,
-                               md_seed)
+                               md_seed,
+                               note=note)
     
     return {'md_traj_file': md_outputs.get('md_traj_file', None),
             'traj_frame_nums': md_outputs.get('traj_frame_nums', None),

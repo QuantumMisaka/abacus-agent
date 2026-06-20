@@ -14,6 +14,7 @@ def abacus_dos_run(
     dos_sigma: float = 0.07,
     dos_emin_ev: float = -10.0,
     dos_emax_ev: float = 10.0,
+    note=None,
 ) -> Dict[str, Any]:
     """Run the DOS and PDOS calculation.
     
@@ -34,6 +35,7 @@ def abacus_dos_run(
         dos_sigma: Width of the Gaussian factor when obtaining smeared Density of States (DOS) in eV. 
         dos_emin_ev: Minimal range for Density of States (DOS) in eV. Default is -10.0.
         dos_emax_ev: Maximal range for Density of States (DOS) in eV. Default is 10.0.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
 
     Returns:
         Dict[str, Any]: A dictionary containing:
@@ -48,7 +50,7 @@ def abacus_dos_run(
             - scf_energy: The calculated energy of SCF calculation.
             - nscf_work_path: Path to the work directory of NSCF calculation
     """
-    return _abacus_dos_run(abacus_inputs_dir, pdos_mode, pdos_atom_indices, dos_edelta_ev, dos_sigma, dos_emin_ev, dos_emax_ev)
+    return _abacus_dos_run(abacus_inputs_dir, pdos_mode, pdos_atom_indices, dos_edelta_ev, dos_sigma, dos_emin_ev, dos_emax_ev, note=note)
 
 def plot_write_dos_pdos(
     scf_job_path: Path,

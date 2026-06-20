@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Dict, Any, Literal
+from typing import List, Dict, Any, Literal, Optional
 
 from abacusagent.init_mcp import mcp
 from abacusagent.modules.submodules.vacancy import abacus_cal_vacancy_formation_energy as _abacus_cal_vacancy_formation_energy
@@ -10,6 +10,7 @@ def abacus_cal_vacancy_formation_energy(
     supercell: List[int],
     vacancy_index: int,
     relax_precision: Literal['low', 'medium', 'high'] = 'low',
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Calculate vacancy formation energy. Currenly only non-charged vacancy of limited elements are suppoted. 
@@ -37,5 +38,6 @@ def abacus_cal_vacancy_formation_energy(
         abacus_inputs_dir,
         supercell,
         vacancy_index,
-        relax_precision
+        relax_precision,
+        note=note,
     )

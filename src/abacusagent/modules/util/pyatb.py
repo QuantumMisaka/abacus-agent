@@ -55,7 +55,8 @@ def generate_input_chern_compatible(
 def property_calculation_scf(
     abacus_inputs_path: Path,
     mode: Literal["nscf", "pyatb", "auto"] = "auto",
-    always_run: bool = False
+    always_run: bool = False,
+    note=None,
 ):
     """Perform the SCF calculation for property calculations like DOS or band structure.
 
@@ -66,6 +67,7 @@ def property_calculation_scf(
             pyatb: run SCF with out_mat_r and out_mat_hs2 = 1, then calculate properties using Pyatb.
             auto: automatically determine the mode based on the input parameters. If basis is LCAO, use "pyatb", otherwise use "nscf".
         always_run (bool): Whether to always run the SCF calculation, even if the required output files already exist.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
 
     Returns:
         Dict[str, Any]: A dictionary containing the work path, normal end status, SCF steps, convergence status, and energies.
@@ -90,7 +92,7 @@ def property_calculation_scf(
         else:
             raise ValueError(f"Invalid mode: {mode}. Use 'nscf', 'pyatb', or 'auto'.")
         
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
         link_abacusjob(src=abacus_inputs_path,
                        dst=work_path,
                        copy_files=["INPUT", "STRU", "KPT"])
@@ -113,7 +115,7 @@ def property_calculation_scf(
             if basis_type == "pw" and mode == "pyatb":
                 raise ValueError("Pyatb mode is not supported for PW basis. Please use 'nscf' mode instead.")
 
-            work_path = Path(generate_work_path()).absolute()
+            work_path = Path(generate_work_path(note=note)).absolute()
             link_abacusjob(src=abacus_inputs_path,
                            dst=work_path,
                            copy_files=["INPUT", "STRU", "KPT"])

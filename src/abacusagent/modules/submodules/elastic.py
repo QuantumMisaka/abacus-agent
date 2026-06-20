@@ -86,7 +86,8 @@ def abacus_cal_elastic(
     norm_strain: float = 0.01,
     shear_strain: float = 0.01,
     kspacing: float = 0.08,
-    relax_force_thr_ev: float = 0.01
+    relax_force_thr_ev: float = 0.01,
+    note=None,
 ) -> Dict[str, float]:
     """
     Calculate various elastic constants for a given structure using ABACUS. 
@@ -96,6 +97,7 @@ def abacus_cal_elastic(
         shear_strain (float): Shear strain to calculate elastic constants, default is 0.01.
         kspacing (float): K-point spacing for ABACUS calculation, default is 0.08. Units in Bohr^{-1}.
         relax_force_thr_ev (float): Threshold for force convergence of the relax calculation for each deformed structure, default is 0.02. Units in eV/Angstrom.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         A dictionary containing the following keys:
         - elastic_cal_dir (Path): Work path of running abacus_cal_elastic. 
@@ -113,7 +115,7 @@ def abacus_cal_elastic(
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
         
         abacus_inputs_dir = Path(abacus_inputs_dir).absolute()
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
         input_stru_dir = Path(os.path.join(work_path, "input_stru")).absolute()
 
         link_abacusjob(src=abacus_inputs_dir,

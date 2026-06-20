@@ -11,7 +11,8 @@ def abacus_cal_band(abacus_inputs_dir: Path,
                     high_symm_points: Dict[str, List[float]] = None,
                     energy_min: float = -10,
                     energy_max: float = 10,
-                    insert_point_nums: int = 30
+                    insert_point_nums: int = 30,
+                    note=None,
 ) -> Dict[str, Any]:
     """
     Calculate band using ABACUS based on prepared directory containing the INPUT, STRU, KPT, and pseudopotential or orbital files.
@@ -37,9 +38,9 @@ def abacus_cal_band(abacus_inputs_dir: Path,
         energy_min (float): Lower bound of $E - E_F$ in the plotted band.
         energy_max (float): Upper bound of $E - E_F$ in the plotted band.
         insert_point_nums (int): Number of points to insert between two high symmetry points. Default is 30.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         A dictionary containing band gap, path to the work directory for calculating band and path to the plotted band.
     Raises:
     """
-    return _abacus_cal_band(abacus_inputs_dir, mode, kpath, high_symm_points, energy_min, energy_max, insert_point_nums)
-
+    return _abacus_cal_band(abacus_inputs_dir, mode, kpath, high_symm_points, energy_min, energy_max, insert_point_nums, note=note)

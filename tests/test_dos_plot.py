@@ -25,7 +25,7 @@ class TestPlotDos(unittest.TestCase):
 
         # Call the run_dos function
         results_figs, results_datas = mkplots(self.data_dir, self.data_dir, "species", dos_emin_ev=-1, dos_emax_ev=1)
-        
+
         output_dir = Path(glob.glob("*plot_write_dos_pdos*")[0]).absolute()
         results_figs_ref = [
             output_dir / "DOS.png",
@@ -41,6 +41,6 @@ class TestPlotDos(unittest.TestCase):
 
         if os.path.exists(self.data_dir / "metrics.json"):
             os.remove(self.data_dir / "metrics.json")
-        
+
         for dir in glob.glob("*plot_write_dos_pdos*"):
             shutil.rmtree(dir)

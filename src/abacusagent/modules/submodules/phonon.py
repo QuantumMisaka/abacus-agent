@@ -181,7 +181,8 @@ def abacus_phonon_dispersion(
     temperature: Optional[float] = 298.15,
     min_supercell_length: float = 10.0,
     qpath: Optional[Union[List[str], List[List[str]]]] = None,
-    high_symm_points: Optional[Dict[str, List[float]]] = None
+    high_symm_points: Optional[Dict[str, List[float]]] = None,
+    note=None,
 ):
     """
     Calculate phonon dispersion with finite-difference method using Phonopy with ABACUS as the calculator. 
@@ -203,6 +204,7 @@ def abacus_phonon_dispersion(
         high_symm_points: A dictionary containing high symmetry points and their coordinates in the band path. All points in `qpath` should be included.
             For example, {'G': [0, 0, 0], 'M': [0.5, 0.0, 0.0], 'K': [0.33333333, 0.33333333, 0.0], 'G': [0, 0, 0]}.
             Default is None. If None, will use automatically generated high symmetry points.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         A dictionary containing:
             - phonon_work_path: Path to the directory containing phonon calculation results.
@@ -218,7 +220,7 @@ def abacus_phonon_dispersion(
         if not is_valid:
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
         
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
 
         displaced_job_dirs = prepare_phonon_dispersion(work_path,
                                                        abacus_inputs_dir,

@@ -50,7 +50,8 @@ def plot_eos(lat_params, fit_energy, scaled_lat_params, energies):
 def abacus_eos(
     abacus_inputs_dir: Path,
     stru_scale_number: int = 3,
-    scale_stepsize: float = 0.02
+    scale_stepsize: float = 0.02,
+    note=None,
 ):
     """
     Use Birch-Murnaghan equation of state (EOS) to calculate the EOS data. The shape of fitted crystal is limited to cubic now.
@@ -59,6 +60,7 @@ def abacus_eos(
         abacus_inputs_dir (Path): Path to the ABACUS input files, which contains the INPUT, STRU, KPT, and pseudopotential or orbital files.
         stru_scale_number (int): Number of structures to generate for EOS calculation.
         scale_stepsize (float): Step size for scaling. Default is 0.02, which means 2% of the original cell size.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
 
     Returns:
         Dict[str, Any]: A dictionary containing EOS calculation results:
@@ -74,7 +76,7 @@ def abacus_eos(
         if not is_valid:
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
 
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
 
         input_params = ReadInput(os.path.join(abacus_inputs_dir, "INPUT"))
         input_stru_file = input_params.get('stru_file', 'STRU')

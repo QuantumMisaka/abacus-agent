@@ -44,9 +44,16 @@ include = ["abacusagent*"]
 exclude = ["tests*", "docs*", "examples*"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]  
-testpaths = ["tests"] 
-addopts = "-v"        
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-v"
+norecursedirs = ["integrate_test"]
+markers = [
+       "integration: opt-in integration tests under tests/integrate_test",
+       "long: mark tests as long time usage (deselect with '-m \"not long\"')",
+       "smoke: mark tests used in a quick smoke test",
+       "tool_wrapper: mark tests for tool wrapper",
+]
 
 [project.optional-dependencies]
 server = ["mcp>=1.10.0"]

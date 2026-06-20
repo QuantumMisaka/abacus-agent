@@ -14,11 +14,12 @@ def abacus_do_relax(
     fixed_axes: Optional[Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"]] = None,
     relax_method: Optional[Literal["cg", "bfgs", "bfgs_trad", "cg_bfgs", "sd", "fire"]] = None,
     relax_new: Optional[bool] = None,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Perform relaxation calculations using ABACUS based on the provided input files. The results of the relaxation and 
+    Perform relaxation calculations using ABACUS based on the provided input files. The results of the relaxation and
     the new ABACUS input files containing final relaxed structure will be returned.
-    
+
     Args:
         abacus_inputs_dir: Path to the ABACUS input files, which contains the INPUT, STRU, KPT, and pseudopotential or orbital files.
         force_thr_ev: Force convergence threshold in eV/Å, default is 0.01.
@@ -34,7 +35,7 @@ def abacus_do_relax(
             - c: fix c axis
             - ab: fix both a and b axes
             - ac: fix both a and c axes
-            - bc: fix both b and c axes  
+            - bc: fix both b and c axes
         relax_method: The relaxation method to use, can be 'cg', 'bfgs', 'bfgs_trad', 'cg_bfgs', 'sd', or 'fire'. Default is 'cg'.
         relax_new: If use new implemented CG method, default is True.
 
@@ -49,7 +50,7 @@ def abacus_do_relax(
             - largest_gradient: The largest force gradient during the relaxation.
             - relax_converge: Whether the relaxation converged.
             - energies: The energies at each step of the relaxation.
-    
+
     For example:
         # only relax the atomic positions
         >>> abacus_do_relax(
@@ -71,8 +72,8 @@ def abacus_do_relax(
                 stress_thr_kbar=1.0,
                 max_steps=100,
                 relax_cell=True,
-                fixed_axes="volume") 
-        
+                fixed_axes="volume")
+
         When the relaxation is not converged, please try to use other relaxation methods.
     """
     return _abacus_do_relax(abacus_inputs_dir,
@@ -82,6 +83,7 @@ def abacus_do_relax(
                            relax_cell=relax_cell,
                            fixed_axes=fixed_axes,
                            relax_method=relax_method,
-                           relax_new=relax_new
+                           relax_new=relax_new,
+                           note=note,
     )
-    
+

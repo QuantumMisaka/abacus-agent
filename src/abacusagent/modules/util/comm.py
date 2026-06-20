@@ -12,6 +12,11 @@ import glob
 
 from abacustest.lib_prepare.abacus import ReadInput
 from abacustest.lib_collectdata.collectdata import RESULT
+from abacusagent.modules.util.work_path import (
+    _random_4digit_suffix,
+    _slugify_work_note,
+    generate_work_path,
+)
 
 
 def run_command(
@@ -368,29 +373,6 @@ def link_abacusjob(src: str,
                 os.symlink(path, dst_path)
             
             
-def generate_work_path(create: bool = True) -> str:
-    """
-    Generate a concise, time-sortable working directory name. Edited by QuantumMisaka
-
-    Naming rule: `MMDDHHMM` + `calling_function` + 4-digit random number.
-    Second-level timestamp ensures lexicographic order reflects creation time while keeping name short.
-    Keep the caller function name for traceability, and use a short random suffix to avoid collisions.
-
-    Returns:
-        str: The relative path string of the working directory.
-    """
-    calling_function = traceback.extract_stack(limit=2)[-2].name
-    safe_name = "".join(c if (c.isalnum() or c in "._-") else "_" for c in calling_function)
-    if len(safe_name) > 24:
-        safe_name = safe_name[:24]
-    current_time = time.strftime("%m%d%H%M")
-    rand = f"{int.from_bytes(os.urandom(2), 'big') % 10000:04d}"
-    work_path = f"{current_time}.{safe_name}.{rand}"
-    if create:
-        os.makedirs(work_path, exist_ok=True)
-    return work_path
-
-
 def has_chgfile(abacus_jobpath:Path) -> bool:
     """
     Check if the charge file exists in the given ABACUS job path. Used to determine if an abacus job has writen the charge file.

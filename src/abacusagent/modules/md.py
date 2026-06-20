@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Any, List, Literal
+from typing import Dict, Any, List, Literal, Optional
 
 from abacusagent.init_mcp import mcp
 from abacusagent.modules.submodules.md import abacus_run_md as _abacus_run_md
@@ -16,7 +16,8 @@ def abacus_run_md(
     md_pmode: Literal['iso', 'aniso', 'tri'] = 'iso',
     md_pcouple: Literal['none', 'xy', 'xz', 'yz', 'xyz'] = 'none',
     md_dumpfreq: int = 1,
-    md_seed: int = -1
+    md_seed: int = -1,
+    note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Use ABACUS to do ab-initio molecular dynamics calculation.
@@ -74,5 +75,6 @@ def abacus_run_md(
         md_pmode,
         md_pcouple,
         md_dumpfreq,
-        md_seed
+        md_seed,
+        note=note,
     )

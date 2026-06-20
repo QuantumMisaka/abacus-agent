@@ -13,6 +13,7 @@ def abacus_cal_vacancy_formation_energy(
     supercell: List[int],
     vacancy_index: int,
     relax_precision: Literal['low', 'medium', 'high'] = 'low',
+    note=None,
 ) -> Dict[str, Any]:
     """
     Calculate vacancy formation energy. Currenly only non-charged vacancy of limited elements are suppoted. 
@@ -29,6 +30,7 @@ def abacus_cal_vacancy_formation_energy(
         - 'low' means the relax calculation will be done with force_thr_ev=0.05 and stress_thr=5.0.
         - 'medium' means the relax calculation will be done with force_thr_ev=0.01 and stress_thr=1.0.
         - 'high' means the relax calculation will be done with force_thr_ev=0.005 and stress_thr=0.5.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         A dictionary containing:
         - "vacancy_formation_energy": Calculated vacancy formation energy.
@@ -41,7 +43,7 @@ def abacus_cal_vacancy_formation_energy(
         if not is_valid:
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
 
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
         original_inputs_dir = os.path.join(work_path, "original_inputs")
         ref_dir = os.path.join(work_path, "ref_element")
         link_abacusjob(src=abacus_inputs_dir, dst=original_inputs_dir, copy_files=['INPUT', 'STRU'])

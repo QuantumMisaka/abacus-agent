@@ -95,7 +95,8 @@ def abacus_run_md(
     md_pmode: Literal['iso', 'aniso', 'tri'] = 'iso',
     md_pcouple: Literal['none', 'xy', 'xz', 'yz', 'xyz'] = 'none',
     md_dumpfreq: int = 1,
-    md_seed: int = -1
+    md_seed: int = -1,
+    note=None,
 ) -> Dict[str, Any]:
     """
     Use ABACUS to do ab-initio molecular dynamics calculation.
@@ -135,6 +136,7 @@ def abacus_run_md(
         md_seed (int): The random seed to initialize random numbers used in molecular dynamics calculations.
             - < 0: No srand() function is called.
             - >= 0: The function srand(md_seed) is called.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         A dictionary containing:
             - md_work_path (Path): The working directory of the molecular dynamics calculation.
@@ -143,7 +145,7 @@ def abacus_run_md(
             - normal_end (bool): Whether the ab-initio molecular dynamics calculation ended normally.
     """
     try:
-        work_path = Path(generate_work_path()).absolute()
+        work_path = Path(generate_work_path(note=note)).absolute()
         link_abacusjob(src=abacus_inputs_dir, dst=work_path, copy_files=['INPUT', 'STRU'], exclude_directories=True)
         input_params = ReadInput(os.path.join(work_path, "INPUT"))
 

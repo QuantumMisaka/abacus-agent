@@ -326,7 +326,8 @@ def abacus_cal_band(abacus_inputs_dir: Path,
                     high_symm_points: Dict[str, List[float]] = None,
                     energy_min: float = -10,
                     energy_max: float = 10,
-                    insert_point_nums: int = 30
+                    insert_point_nums: int = 30,
+                    note=None,
 ) -> Dict[str, float|str]:
     """
     Calculate band using ABACUS based on prepared directory containing the INPUT, STRU, KPT, and pseudopotential or orbital files.
@@ -352,6 +353,7 @@ def abacus_cal_band(abacus_inputs_dir: Path,
         energy_min (float): Lower bound of $E - E_F$ in the plotted band.
         energy_max (float): Upper bound of $E - E_F$ in the plotted band.
         insert_point_nums (int): Number of points to insert between two high symmetry points. Default is 30.
+        note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
     Returns:
         A dictionary containing band gap, path to the work directory for calculating band and path to the plotted band.
     Raises:
@@ -389,7 +391,12 @@ def abacus_cal_band(abacus_inputs_dir: Path,
             print("kpath and high_symm_points must be used together. Use auto-generated kpath and high_symm_points")
         
         force_run = True if original_stru.get_natoms() != new_stru.get_natoms() else False
-        scf_output = property_calculation_scf(abacus_inputs_dir, mode, always_run=force_run)
+        scf_output = property_calculation_scf(
+            abacus_inputs_dir,
+            mode,
+            always_run=force_run,
+            note=note,
+        )
         work_path, mode = scf_output["work_path"], scf_output["mode"]
         if mode == 'pyatb':
             # Obtain band using PYATB
