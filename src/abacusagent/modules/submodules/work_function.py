@@ -7,10 +7,29 @@ from abacustest.lib_model.model_020_workfunc import prep_abacus_workfunc_calc, p
 
 from abacusagent.modules.util.comm import run_abacus, generate_work_path, link_abacusjob
 
+VacuumDirection = Literal['a', 'b', 'c', 'x', 'y', 'z', 'auto']
+
+
+def _normalize_vacuum_direction(vacuum_direction: VacuumDirection) -> Literal['a', 'b', 'c', 'auto']:
+    direction_map = {'x': 'a', 'y': 'b', 'z': 'c', 'a': 'a', 'b': 'b', 'c': 'c', 'auto': 'auto'}
+    try:
+        return direction_map[vacuum_direction]
+    except KeyError as exc:
+        raise ValueError(
+            f"Invalid vacuum direction: {vacuum_direction}. "
+            "Expected one of 'a', 'b', 'c', 'x', 'y', 'z', or 'auto'."
+        ) from exc
+
+
 def abacus_cal_work_function(
     abacus_inputs_dir: Path,
-    vacuum_direction: Literal['a', 'b', 'c', 'auto'] = 'c',
+    vacuum_direction: VacuumDirection = 'c',
     dipole_correction: bool = False,
+    work_function_threshold: float = 0.01,
+    use_empty_atom: bool = False,
+    empty_atom_elem: Optional[str] = None,
+    empty_atom_height: float = 2.0,
+    empty_atom_dist: float = 2.0,
     note=None,
 ) -> Dict[str, Any]:
     """
@@ -18,8 +37,13 @@ def abacus_cal_work_function(
     
     Args:
         abacus_inputs_dir (Path): Path to the ABACUS input files, which contains the INPUT, STRU, KPT, and pseudopotential or orbital files.
-        vacuum_direction (Literal['a', 'b', 'c', 'auto']): The direction of the vacuum. If set to auto, the direction will try to be determined automatically.
+        vacuum_direction (Literal['a', 'b', 'c', 'x', 'y', 'z', 'auto']): The direction of the vacuum. If set to auto, the direction will try to be determined automatically.
         dipole_correction (bool): Whether to apply dipole correction along the vacuum direction. For polar slabs, it is recommended to enable dipole correction.
+        work_function_threshold (float): Plateau detection threshold used by abacustest work-function post-processing.
+        use_empty_atom (bool): Whether to add empty atoms in the vacuum region before running the work-function calculation.
+        empty_atom_elem (str or None): Element symbol used for empty atoms. If None, abacustest uses the first element in the structure.
+        empty_atom_height (float): Distance from surface edge to the empty atom layer.
+        empty_atom_dist (float): Approximate in-plane spacing between empty atoms.
         note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
 
     Returns:
@@ -38,14 +62,29 @@ def abacus_cal_work_function(
         is_valid, msg = check_abacus_inputs(abacus_inputs_dir)
         if not is_valid:
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
+        normalized_vacuum_direction = _normalize_vacuum_direction(vacuum_direction)
         
         work_path = Path(generate_work_path(note=note)).absolute()
         link_abacusjob(src=abacus_inputs_dir,dst=work_path,copy_files=["INPUT", "STRU"], exclude_directories=True)
-        workfunc_work_dir = prep_abacus_workfunc_calc(work_path, vacuum_direction, dipole_correction, os.path.join(work_path, "workfunc_job"))
+        workfunc_work_dir = prep_abacus_workfunc_calc(
+            work_path,
+            normalized_vacuum_direction,
+            dipole_correction,
+            os.path.join(work_path, "workfunc_job"),
+            use_empty_atom=use_empty_atom,
+            empty_atom_elem=empty_atom_elem,
+            empty_atom_height=empty_atom_height,
+            empty_atom_dist=empty_atom_dist,
+        )
         
         run_abacus(workfunc_work_dir)
 
-        work_function_results, plot_path, pot_file, plot_data_file = post_workfunc_calc(work_path, jobtype="abacus")
+        work_function_results, plot_path, pot_file, plot_data_file = post_workfunc_calc(
+            work_path,
+            jobtype="abacus",
+            vacuum_dir_specified=normalized_vacuum_direction,
+            thr=work_function_threshold,
+        )
 
         return {'elecstat_pot_work_function_work_path': Path(work_path).absolute(),
                 'elecstat_pot_file': Path(pot_file).absolute(),

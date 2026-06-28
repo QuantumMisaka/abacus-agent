@@ -56,6 +56,52 @@ def _install_runtime_stubs(monkeypatch):
         monkeypatch.setitem(sys.modules, name, module)
 
 
+def _install_work_function_stubs(monkeypatch):
+    abacustest_pkg = types.ModuleType("abacustest")
+    abacustest_pkg.__path__ = []
+    lib_prepare_pkg = types.ModuleType("abacustest.lib_prepare")
+    lib_prepare_pkg.__path__ = []
+    abacus_mod = types.ModuleType("abacustest.lib_prepare.abacus")
+    collect_pkg = types.ModuleType("abacustest.lib_collectdata")
+    collect_pkg.__path__ = []
+    collect_mod = types.ModuleType("abacustest.lib_collectdata.collectdata")
+    lib_model_pkg = types.ModuleType("abacustest.lib_model")
+    lib_model_pkg.__path__ = []
+    comm_mod = types.ModuleType("abacustest.lib_model.comm")
+    workfunc_mod = types.ModuleType("abacustest.lib_model.model_020_workfunc")
+
+    abacus_mod.ReadInput = lambda *args, **kwargs: {}
+    collect_mod.RESULT = object()
+    comm_mod.check_abacus_inputs = lambda *args, **kwargs: (True, "ok")
+    workfunc_mod.prep_abacus_workfunc_calc = lambda *args, **kwargs: None
+    workfunc_mod.post_workfunc_calc = lambda *args, **kwargs: ([], None, None, None)
+
+    abacustest_pkg.lib_prepare = lib_prepare_pkg
+    lib_prepare_pkg.abacus = abacus_mod
+    abacustest_pkg.lib_collectdata = collect_pkg
+    collect_pkg.collectdata = collect_mod
+    abacustest_pkg.lib_model = lib_model_pkg
+    lib_model_pkg.comm = comm_mod
+    lib_model_pkg.model_020_workfunc = workfunc_mod
+
+    for name, module in {
+        "abacustest": abacustest_pkg,
+        "abacustest.lib_prepare": lib_prepare_pkg,
+        "abacustest.lib_prepare.abacus": abacus_mod,
+        "abacustest.lib_collectdata": collect_pkg,
+        "abacustest.lib_collectdata.collectdata": collect_mod,
+        "abacustest.lib_model": lib_model_pkg,
+        "abacustest.lib_model.comm": comm_mod,
+        "abacustest.lib_model.model_020_workfunc": workfunc_mod,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, module)
+    for module_name in [
+        "abacusagent.modules.work_function",
+        "abacusagent.modules.submodules.work_function",
+    ]:
+        sys.modules.pop(module_name, None)
+
+
 def test_dos_module_imports_with_available_abacustest_dos_api():
     from abacusagent.modules.submodules.dos import DOSData, PDOSData
 
@@ -241,6 +287,116 @@ def test_generate_input_chern_compatible_with_pyatb_old_signature(monkeypatch):
             "direct",
         )
     ]
+
+
+def test_work_function_forwards_abacustest_0461_options(monkeypatch, tmp_path):
+    _install_work_function_stubs(monkeypatch)
+
+    from abacusagent.modules.submodules import work_function as work_function_module
+
+    calls = {}
+
+    monkeypatch.setattr(work_function_module, "check_abacus_inputs", lambda path: (True, "ok"))
+    monkeypatch.setattr(work_function_module, "generate_work_path", lambda note=None: tmp_path / "work")
+    monkeypatch.setattr(
+        work_function_module,
+        "link_abacusjob",
+        lambda src, dst, copy_files, exclude_directories: calls.setdefault(
+            "link",
+            {
+                "src": src,
+                "dst": dst,
+                "copy_files": copy_files,
+                "exclude_directories": exclude_directories,
+            },
+        ),
+    )
+
+    def fake_prep(job, vacuum_dir, dipole_corr, workfunc_dir, **kwargs):
+        calls["prep"] = {
+            "job": job,
+            "vacuum_dir": vacuum_dir,
+            "dipole_corr": dipole_corr,
+            "workfunc_dir": workfunc_dir,
+            **kwargs,
+        }
+        return tmp_path / "work" / "workfunc_job"
+
+    def fake_post(job, jobtype="abacus", vacuum_dir_specified="auto", thr=0.01):
+        calls["post"] = {
+            "job": job,
+            "jobtype": jobtype,
+            "vacuum_dir_specified": vacuum_dir_specified,
+            "thr": thr,
+        }
+        return [{"work_function": 4.2}], tmp_path / "plot.png", tmp_path / "pot.cube", tmp_path / "profiled.dat"
+
+    monkeypatch.setattr(work_function_module, "prep_abacus_workfunc_calc", fake_prep)
+    monkeypatch.setattr(work_function_module, "run_abacus", lambda workdir: calls.setdefault("run", workdir))
+    monkeypatch.setattr(work_function_module, "post_workfunc_calc", fake_post)
+
+    result = work_function_module.abacus_cal_work_function(
+        tmp_path / "inputs",
+        vacuum_direction="z",
+        dipole_correction=True,
+        work_function_threshold=0.02,
+        use_empty_atom=True,
+        empty_atom_elem="Al",
+        empty_atom_height=3.0,
+        empty_atom_dist=2.5,
+        note="Al-work-function",
+    )
+
+    assert calls["prep"]["vacuum_dir"] == "c"
+    assert calls["prep"]["dipole_corr"] is True
+    assert calls["prep"]["use_empty_atom"] is True
+    assert calls["prep"]["empty_atom_elem"] == "Al"
+    assert calls["prep"]["empty_atom_height"] == 3.0
+    assert calls["prep"]["empty_atom_dist"] == 2.5
+    assert calls["post"]["vacuum_dir_specified"] == "c"
+    assert calls["post"]["thr"] == 0.02
+    assert result["work_function_results"] == [{"work_function": 4.2}]
+
+
+def test_public_work_function_entrypoint_forwards_abacustest_0461_options(monkeypatch, tmp_path):
+    _install_work_function_stubs(monkeypatch)
+
+    from abacusagent.modules import work_function as work_function_module
+
+    calls = []
+
+    def fake_work_function(**kwargs):
+        calls.append(kwargs)
+        return {"work_function_results": [{"work_function": 4.2}]}
+
+    monkeypatch.setattr(work_function_module, "_abacus_cal_work_function", fake_work_function)
+
+    result = work_function_module.abacus_cal_work_function(
+        tmp_path / "inputs",
+        vacuum_direction="auto",
+        dipole_correction=True,
+        work_function_threshold=0.03,
+        use_empty_atom=True,
+        empty_atom_elem="O",
+        empty_atom_height=2.8,
+        empty_atom_dist=1.9,
+        note="surface-work-function",
+    )
+
+    assert calls == [
+        {
+            "abacus_inputs_dir": tmp_path / "inputs",
+            "vacuum_direction": "auto",
+            "dipole_correction": True,
+            "work_function_threshold": 0.03,
+            "use_empty_atom": True,
+            "empty_atom_elem": "O",
+            "empty_atom_height": 2.8,
+            "empty_atom_dist": 1.9,
+            "note": "surface-work-function",
+        }
+    ]
+    assert result["work_function_results"] == [{"work_function": 4.2}]
 
 
 def test_public_note_entry_points_document_note_parameter():

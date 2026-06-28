@@ -991,6 +991,11 @@ def abacus_cal_work_function(
     fixed_axes: Literal["None", "volume", "shape", "a", "b", "c", "ab", "ac", "bc"] = None,
     vacuum_direction: Literal['x', 'y', 'z'] = 'z',
     dipole_correction: bool = False,
+    work_function_threshold: float = 0.01,
+    use_empty_atom: bool = False,
+    empty_atom_elem: Optional[str] = None,
+    empty_atom_height: float = 2.0,
+    empty_atom_dist: float = 2.0,
     note: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -1034,6 +1039,11 @@ def abacus_cal_work_function(
             - bc: fix both b and c axes
         vacuum_direction (Literal['x', 'y', 'z']): The direction of the vacuum.
         dipole_correction (bool): Whether to apply dipole correction along the vacuum direction. For polar slabs, it is recommended to enable dipole correction.
+        work_function_threshold (float): Plateau detection threshold used by abacustest work-function post-processing.
+        use_empty_atom (bool): Whether to add empty atoms in the vacuum region before running the work-function calculation.
+        empty_atom_elem (str or None): Element symbol used for empty atoms. If None, abacustest uses the first element in the structure.
+        empty_atom_height (float): Distance from surface edge to the empty atom layer.
+        empty_atom_dist (float): Approximate in-plane spacing between empty atoms.
     
     Returns:
         A dictionary containing:
@@ -1070,6 +1080,11 @@ def abacus_cal_work_function(
     work_function_outputs = _abacus_cal_work_function(abacus_inputs_dir,
                                                       vacuum_direction,
                                                       dipole_correction,
+                                                      work_function_threshold=work_function_threshold,
+                                                      use_empty_atom=use_empty_atom,
+                                                      empty_atom_elem=empty_atom_elem,
+                                                      empty_atom_height=empty_atom_height,
+                                                      empty_atom_dist=empty_atom_dist,
                                                       note=note)
     
     return {'elecstat_pot_file': work_function_outputs.get('elecstat_pot_file', None),
