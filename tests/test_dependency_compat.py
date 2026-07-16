@@ -160,6 +160,7 @@ def test_jdos_submodule_accepts_and_forwards_note(monkeypatch, tmp_path):
 
     assert calls == [{"path": tmp_path / "inputs", "mode": "pyatb", "note": "Fe-jdos"}]
     assert result["jdos_fig_path"].name == "jdos.png"
+    assert result["jdos_data_path"] == (tmp_path / "jdos-work" / "pyatb" / "Out" / "JDOS" / "JDOS.dat").absolute()
 
 
 def test_band_submodule_accepts_and_forwards_note(monkeypatch, tmp_path):

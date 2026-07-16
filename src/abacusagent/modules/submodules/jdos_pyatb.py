@@ -63,4 +63,5 @@ def pyatb_calculate_jdos(
     return {"work_path": scf_results["work_path"],
             "scf_converge": scf_results["converge"],
             "scf_normal_end": scf_results["normal_end"],
-            "jdos_fig_path": Path(jdos_plot_file).absolute(),}
+            "jdos_fig_path": Path(jdos_plot_file).absolute(),
+            "jdos_data_path": jdos_dat_file.absolute(),}
