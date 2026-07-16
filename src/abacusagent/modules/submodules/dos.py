@@ -101,7 +101,7 @@ def abacus_dos_run(
             note=note,
         )
 
-        return_dict = {"dos_fig_path": fig_paths[0]}
+        return_dict = {"dos_fig_path": fig_paths[0], "postprocess_work_path": Path(fig_paths[0]).parent.absolute()}
         return_dict["dos_data_path"] = dos_pdos_data_paths[0]
         try:
             return_dict["pdos_fig_path"] = fig_paths[1]

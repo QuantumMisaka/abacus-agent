@@ -163,6 +163,21 @@ def test_jdos_submodule_accepts_and_forwards_note(monkeypatch, tmp_path):
     assert result["jdos_data_path"] == (tmp_path / "jdos-work" / "pyatb" / "Out" / "JDOS" / "JDOS.dat").absolute()
 
 
+def test_dos_submodule_returns_the_exact_postprocess_work_root(monkeypatch, tmp_path):
+    from abacusagent.modules.submodules import dos
+
+    postprocess = tmp_path / "dos-postprocess"
+    monkeypatch.setattr(dos, "check_abacus_inputs", lambda _path: (True, ""))
+    monkeypatch.setattr(dos, "ReadInput", lambda _path: {"nspin": 1})
+    monkeypatch.setattr(dos, "abacus_dos_run_scf", lambda *_args, **_kwargs: {"scf_work_path": tmp_path / "scf"})
+    monkeypatch.setattr(dos, "abacus_dos_run_nscf", lambda *_args, **_kwargs: {"nscf_work_path": tmp_path / "nscf"})
+    monkeypatch.setattr(dos, "plot_write_dos_pdos", lambda *_args, **_kwargs: ([postprocess / "DOS.png"], [postprocess / "DOS.dat"]))
+
+    result = dos.abacus_dos_run(tmp_path / "inputs")
+
+    assert result["postprocess_work_path"] == postprocess.absolute()
+
+
 def test_band_submodule_accepts_and_forwards_note(monkeypatch, tmp_path):
     _install_runtime_stubs(monkeypatch)
     for module_name in [
