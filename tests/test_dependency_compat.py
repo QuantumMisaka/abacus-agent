@@ -224,6 +224,68 @@ def test_band_submodule_accepts_and_forwards_note(monkeypatch, tmp_path):
     assert result["band_gap"] == 1.23
 
 
+def test_band_nscf_line_kpt_clears_inherited_gamma_selectors(monkeypatch, tmp_path):
+    _install_runtime_stubs(monkeypatch)
+    for module_name in [
+        "abacusagent.modules.submodules.band",
+        "abacusagent.modules.util.pyatb",
+        "abacusagent.modules.util.comm",
+    ]:
+        sys.modules.pop(module_name, None)
+    from abacusagent.modules.submodules import band as band_module
+
+    work_path = tmp_path / "band-work"
+    work_path.mkdir()
+    inputs_path = tmp_path / "inputs"
+    inputs_path.mkdir()
+    written = {}
+    copied = {}
+
+    class FakeStru:
+        def get_kline(self, point_number, new_stru_file, kpt_file):
+            Path(kpt_file).write_text("K_POINTS\n2\nLine\n", encoding="utf-8")
+            return FakeStru(), None, None, None
+
+        def get_natoms(self):
+            return 2
+
+    class FakeAbacusStru:
+        @staticmethod
+        def ReadStru(path):
+            return FakeStru()
+
+    monkeypatch.setattr(band_module, "ReadInput", lambda path: {
+        "stru_file": "STRU", "gamma_only": 1, "kspacing": 0.14,
+        "basis_type": "pw",
+    })
+    monkeypatch.setattr(band_module, "AbacusStru", FakeAbacusStru)
+    monkeypatch.setattr(band_module, "WriteKpt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        band_module, "property_calculation_scf",
+        lambda *args, **kwargs: {"work_path": work_path, "mode": "nscf"},
+    )
+    monkeypatch.setattr(band_module, "WriteInput", lambda data, path: written.update(data))
+    monkeypatch.setattr(
+        band_module, "copy", lambda source, target: copied.update(source=source, target=target),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        band_module.shutil, "copy", lambda source, target: copied.update(source=source, target=target)
+    )
+    monkeypatch.setattr(band_module, "run_abacus", lambda path: None)
+    monkeypatch.setattr(
+        band_module, "abacus_plot_band_nscf",
+        lambda *args: {"band_gap": 0.1, "band_picture": tmp_path / "band.png"},
+    )
+
+    band_module.abacus_cal_band(inputs_path, mode="nscf", note="band-line")
+
+    assert written["calculation"] == "nscf"
+    assert written["gamma_only"] == 0
+    assert written["kspacing"] is None
+    assert copied["source"] == str(inputs_path / "KPT_band")
+
+
 def test_generate_input_chern_compatible_with_pyatb_new_signature(monkeypatch):
     from abacusagent.modules.util import pyatb as pyatb_module
 

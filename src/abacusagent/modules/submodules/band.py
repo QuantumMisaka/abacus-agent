@@ -414,6 +414,8 @@ def abacus_cal_band(abacus_inputs_dir: Path,
             input_params["init_chg"] = "file"
             input_params["out_band"] = 1
             input_params["symmetry"] = 0
+            # Line-mode KPT is the runtime source; inherited INPUT selectors would override it.
+            input_params['gamma_only'] = 0
             input_params['kspacing'] = None
             WriteInput(input_params, os.path.join(work_path, "INPUT"))
             
