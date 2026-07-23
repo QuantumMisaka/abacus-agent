@@ -106,13 +106,23 @@ def abacus_do_relax(
 
         results = relax_postprocess(work_path)
 
-        new_abacus_inputs_dir = abacus_prepare_inputs_from_relax_results(work_path)['job_path']
-
-        return {
+        outputs = {
             "job_path": Path(work_path).absolute(),
-            "new_abacus_inputs_dir": Path(new_abacus_inputs_dir).absolute(),
             **results
         }
+        if (
+            results.get("normal_end") is True
+            and results.get("relax_converge") is True
+        ):
+            handoff_note = f"{note}_inputs" if note else None
+            new_abacus_inputs_dir = abacus_prepare_inputs_from_relax_results(
+                work_path,
+                note=handoff_note,
+            )['job_path']
+            outputs["new_abacus_inputs_dir"] = Path(
+                new_abacus_inputs_dir
+            ).absolute()
+        return outputs
     except Exception as e:
         return {"message": f"Relaxation calculation failed: {e}"}
 
