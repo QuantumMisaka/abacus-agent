@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Dict, List, Optional, Any, Literal, Union
 from pathlib import Path
@@ -7,6 +8,7 @@ import phonopy
 from phonopy import Phonopy
 from phonopy.harmonic.dynmat_to_fc import get_commensurate_points
 from phonopy.structure.atoms import PhonopyAtoms
+from phonopy.structure.cells import get_primitive_matrix_with_auto
 from phonopy.phonon.band_structure import get_band_qpoints_by_seekpath, get_band_qpoints_and_path_connections
 from abacustest.lib_prepare.abacus import ReadInput, WriteInput, AbacusStru
 from abacustest.lib_model.comm import check_abacus_inputs
@@ -37,7 +39,16 @@ def initialize_phonopy_calc(stru: AbacusStru, supercell: Optional[List[int]] = N
                      int(np.ceil(min_supercell_length / b)),
                      int(np.ceil(min_supercell_length / c))]
 
-    phonon = Phonopy(ph_atoms, supercell_matrix=supercell)
+    # Resolve the primitive matrix explicitly with the same auto-detection
+    # phonopy would apply by default. Passing the resolved matrix explicitly
+    # keeps the physics identical while avoiding phonopy's
+    # PrimitiveMatrixAutoDefaultWarning for non-primitive input cells.
+    primitive_matrix = get_primitive_matrix_with_auto(ph_atoms, "auto", symprec=1e-5)
+    phonon = Phonopy(
+        ph_atoms,
+        supercell_matrix=supercell,
+        primitive_matrix=primitive_matrix,
+    )
 
     return phonon
 
@@ -172,7 +183,31 @@ def postprocess_phonon_dispersion(
     axes[0].set_ylabel("Frequency (THz)") # Set ylabel of phonon dispersion plot
     band_dos_plot.savefig(band_dos_plot_path, dpi=300)
 
-    return band_dos_plot_path, thermal, freqs
+    band_payload = _json_safe_band_structure(phonon)
+    if band_payload:
+        band_payload.setdefault("commensurate_frequencies", np.asarray(freqs).tolist())
+
+    return band_dos_plot_path, thermal, freqs, band_payload
+
+
+def _json_safe_band_structure(phonon) -> dict:
+    """Convert phonopy band_structure_dict into a JSON-serialisable payload."""
+    band_data = getattr(phonon, "band_structure_dict", None)
+    if not isinstance(band_data, dict):
+        return {}
+    payload = {}
+    for key, value in band_data.items():
+        try:
+            payload[key] = json.loads(json.dumps(value, default=_ndarray_to_list))
+        except (TypeError, ValueError):
+            continue
+    return payload
+
+
+def _ndarray_to_list(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    raise TypeError(f"not JSON serialisable: {type(value).__name__}")
 
 def abacus_phonon_dispersion(
     abacus_inputs_dir: Path,
@@ -230,15 +265,17 @@ def abacus_phonon_dispersion(
 
         run_abacus(displaced_job_dirs)
 
-        band_dos_plot_path, thermal, freqs = postprocess_phonon_dispersion(work_path,
-                                                                           abacus_inputs_dir,
-                                                                           displaced_job_dirs,
-                                                                           displacement_stepsize,
-                                                                           supercell,
-                                                                           min_supercell_length,
-                                                                           temperature,
-                                                                           qpath=qpath,
-                                                                           high_symm_points=high_symm_points)
+        band_dos_plot_path, thermal, freqs, band_payload = postprocess_phonon_dispersion(
+            work_path,
+            abacus_inputs_dir,
+            displaced_job_dirs,
+            displacement_stepsize,
+            supercell,
+            min_supercell_length,
+            temperature,
+            qpath=qpath,
+            high_symm_points=high_symm_points,
+        )
 
         return {
             "phonon_work_path": Path(work_path).absolute(),
@@ -248,6 +285,12 @@ def abacus_phonon_dispersion(
             "heat_capacity": float(thermal['heat_capacity'][0]),
             "max_frequency_THz": float(np.max(freqs)),
             "max_frequency_K": float(np.max(freqs) * THZ_TO_K),
+            "frequencies": (
+                band_payload.get("frequencies")
+                if band_payload.get("frequencies")
+                else np.asarray(freqs).tolist()
+            ),
+            "band_structure": band_payload,
         }
     except Exception as e:
         return {"message": f"Calculating phonon spectrum failed: {e}"}
