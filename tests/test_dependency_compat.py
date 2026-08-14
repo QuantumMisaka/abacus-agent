@@ -72,7 +72,9 @@ def _install_work_function_stubs(monkeypatch):
 
     abacus_mod.ReadInput = lambda *args, **kwargs: {}
     collect_mod.RESULT = object()
+    abacustest_pkg.AbacusSTRU = object()
     comm_mod.check_abacus_inputs = lambda *args, **kwargs: (True, "ok")
+    comm_mod.get_largest_vacuum_dir = lambda *args, **kwargs: ("a", None, None, None)
     workfunc_mod.prep_abacus_workfunc_calc = lambda *args, **kwargs: None
     workfunc_mod.post_workfunc_calc = lambda *args, **kwargs: ([], None, None, None)
 
@@ -507,3 +509,115 @@ def test_public_note_entry_points_document_note_parameter():
             offenders.append(f"src/{relative_path}:{function_name}:missing note doc")
 
     assert offenders == []
+
+
+def test_work_function_auto_vacuum_resolves_to_letter_before_abacustest(monkeypatch, tmp_path):
+    """auto 必须在本 wrapper 层解析为显式字母，不把 'auto' 传给 abacustest。"""
+    _install_work_function_stubs(monkeypatch)
+
+    from abacusagent.modules.submodules import work_function as work_function_module
+
+    calls = {}
+
+    monkeypatch.setattr(work_function_module, "check_abacus_inputs", lambda path: (True, "ok"))
+    monkeypatch.setattr(work_function_module, "generate_work_path", lambda note=None: tmp_path / "work")
+    monkeypatch.setattr(
+        work_function_module,
+        "link_abacusjob",
+        lambda src, dst, copy_files, exclude_directories: None,
+    )
+    monkeypatch.setattr(
+        work_function_module,
+        "_resolve_auto_vacuum_direction",
+        lambda stru_path: "a",
+    )
+
+    def fake_prep(job, vacuum_dir, dipole_corr, workfunc_dir, **kwargs):
+        calls["prep_vacuum_dir"] = vacuum_dir
+        return tmp_path / "work" / "workfunc_job"
+
+    def fake_post(job, jobtype="abacus", vacuum_dir_specified="auto", thr=0.01):
+        calls["post_vacuum_dir"] = vacuum_dir_specified
+        return (
+            [{"work_function": 4.2}],
+            tmp_path / "plot.png",
+            tmp_path / "pot.cube",
+            tmp_path / "profiled.dat",
+        )
+
+    monkeypatch.setattr(work_function_module, "prep_abacus_workfunc_calc", fake_prep)
+    monkeypatch.setattr(work_function_module, "run_abacus", lambda workdir: None)
+    monkeypatch.setattr(work_function_module, "post_workfunc_calc", fake_post)
+
+    work_function_module.abacus_cal_work_function(
+        tmp_path / "inputs", vacuum_direction="auto", note="auto-resolve"
+    )
+
+    assert calls["prep_vacuum_dir"] == "a"
+    assert calls["post_vacuum_dir"] == "a"
+
+
+def test_work_function_auto_vacuum_resolver_returns_letter_for_slab(tmp_path):
+    """真实 STRU（真空沿 a）经 get_largest_vacuum_dir 解析为 'a'。"""
+    import importlib.util
+    import sys
+
+    # 本文件前序测试会用假 abacustest 桩污染 sys.modules，且可能缓存绑定桩的模块；
+    # 直接从源码独立执行该模块并清空 abacustest* 缓存，保证真实依赖参与解析。
+    for name in list(sys.modules):
+        if name == "abacustest" or name.startswith("abacustest."):
+            sys.modules.pop(name, None)
+    spec = importlib.util.spec_from_file_location(
+        "work_function_real_check",
+        TEST_ROOT / "src" / "abacusagent" / "modules" / "submodules" / "work_function.py",
+    )
+    work_function_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(work_function_module)
+
+    (tmp_path / "STRU").write_text(
+        "\n".join(
+            [
+                "ATOMIC_SPECIES",
+                "Si 28.085 Si.upf",
+                "LATTICE_CONSTANT",
+                "1.0",
+                "LATTICE_VECTORS",
+                "10 0 0",
+                "0 4 0",
+                "0 0 4",
+                "ATOMIC_POSITIONS",
+                "Direct",
+                "Si",
+                "0.0",
+                "2",
+                "0.10 0 0 0 0 0",
+                "0.20 0 0 0 0 0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert work_function_module._resolve_auto_vacuum_direction(tmp_path / "STRU") == "a"
+
+
+def test_work_function_auto_vacuum_resolver_fails_closed_on_garbage_stru(tmp_path):
+    """无法解析 STRU 时 fail-closed，提示显式指定方向。"""
+    import importlib.util
+    import sys
+
+    import pytest
+
+    for name in list(sys.modules):
+        if name == "abacustest" or name.startswith("abacustest."):
+            sys.modules.pop(name, None)
+    spec = importlib.util.spec_from_file_location(
+        "work_function_real_check_failclosed",
+        TEST_ROOT / "src" / "abacusagent" / "modules" / "submodules" / "work_function.py",
+    )
+    work_function_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(work_function_module)
+
+    (tmp_path / "STRU").write_text("garbage\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="显式指定"):
+        work_function_module._resolve_auto_vacuum_direction(tmp_path / "STRU")

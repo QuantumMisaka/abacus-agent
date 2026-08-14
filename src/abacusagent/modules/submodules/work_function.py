@@ -2,7 +2,8 @@ import os
 from pathlib import Path
 from typing import Literal, Optional, Dict, Any, List
 
-from abacustest.lib_model.comm import check_abacus_inputs
+from abacustest import AbacusSTRU
+from abacustest.lib_model.comm import check_abacus_inputs, get_largest_vacuum_dir
 from abacustest.lib_model.model_020_workfunc import prep_abacus_workfunc_calc, post_workfunc_calc
 
 from abacusagent.modules.util.comm import run_abacus, generate_work_path, link_abacusjob
@@ -19,6 +20,28 @@ def _normalize_vacuum_direction(vacuum_direction: VacuumDirection) -> Literal['a
             f"Invalid vacuum direction: {vacuum_direction}. "
             "Expected one of 'a', 'b', 'c', 'x', 'y', 'z', or 'auto'."
         ) from exc
+
+
+def _resolve_auto_vacuum_direction(stru_path: Path) -> Literal['a', 'b', 'c']:
+    """Resolve ``auto`` to an explicit lattice letter before delegating to abacustest.
+
+    abacustest 0.4.x ``post_workfunc_calc`` maps ``efield_dir`` ints to letters
+    behind a truthiness guard, so a slab whose dipole/vacuum axis is ``a``
+    (``efield_dir = 0``, falsy) leaks the integer into ``grid.profile1d`` and
+    crashes with ``Invalid axis: 0 is not a, b or c``.  Resolving the vacuum
+    direction at this wrapper makes the postprocess path deterministic.
+    """
+    try:
+        stru = AbacusSTRU.read(stru_path)
+        direction = get_largest_vacuum_dir(coords=stru.coords, cell=stru.cell)[0]
+    except Exception as exc:
+        raise ValueError(
+            f"无法自动识别真空方向（STRU: {stru_path}）；"
+            "请显式指定 vacuum_direction 为 'a'/'b'/'c'。"
+        ) from exc
+    if direction not in ("a", "b", "c"):
+        raise ValueError(f"自动识别的真空方向不合法: {direction}")
+    return direction
 
 
 def abacus_cal_work_function(
@@ -66,6 +89,8 @@ def abacus_cal_work_function(
         
         work_path = Path(generate_work_path(note=note)).absolute()
         link_abacusjob(src=abacus_inputs_dir,dst=work_path,copy_files=["INPUT", "STRU"], exclude_directories=True)
+        if normalized_vacuum_direction == "auto":
+            normalized_vacuum_direction = _resolve_auto_vacuum_direction(work_path / "STRU")
         workfunc_work_dir = prep_abacus_workfunc_calc(
             work_path,
             normalized_vacuum_direction,
