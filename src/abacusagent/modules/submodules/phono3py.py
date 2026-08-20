@@ -18,7 +18,7 @@ def run_phono3py_thermal(
     *,
     work_dir: str | Path,
     displacement_yaml: str | Path,
-    displacement_jobs: Sequence[str | Path] = (),
+    displacement_jobs: Sequence[Any] = (),
     mesh: Sequence[int] = (2, 2, 2),
     temperatures: Sequence[float] = (300.0,),
     cutoff_frequency: float | None = None,
@@ -33,7 +33,13 @@ def run_phono3py_thermal(
     yaml_path = Path(displacement_yaml).resolve()
     if not yaml_path.is_file() or yaml_path.parent != root:
         raise ValueError("displacement_yaml must be an existing canonical file in work_dir")
-    jobs = [Path(item).resolve() for item in displacement_jobs]
+    typed_jobs = []
+    for item in displacement_jobs:
+        if isinstance(item, Mapping):
+            typed_jobs.append((Path(item["path"]).resolve(), str(item.get("kind", "fc3")).lower()))
+        else:
+            typed_jobs.append((Path(item).resolve(), "fc3"))
+    jobs = [path for path, _kind in typed_jobs]
     if jobs:
         for job in jobs:
             if not job.is_dir() or root not in job.parents:
@@ -45,30 +51,50 @@ def run_phono3py_thermal(
 
     ph3 = phono3py.load(str(yaml_path))
     if jobs:
-        forces, energies = [], []
-        for job in jobs:
+        forces_fc3, energies_fc3, forces_fc2 = [], [], []
+        for job, kind in typed_jobs:
             try:
                 labelled = dpdata.LabeledSystem(str(job), fmt="abacus/scf")
-                forces.append(labelled["forces"][0])
-                energies.append(labelled["energies"][0])
+                if kind == "fc2":
+                    forces_fc2.append(labelled["forces"][0])
+                else:
+                    forces_fc3.append(labelled["forces"][0])
+                    energies_fc3.append(labelled["energies"][0])
             except Exception as exc:
                 raise RuntimeError(f"failed to collect force/energy from displacement job {job}") from exc
-        if not forces:
+        if not forces_fc3:
             raise RuntimeError("no displacement force/energy records were collected")
-        ph3.forces = np.asarray(forces)
-        ph3.supercell_energies = np.asarray(energies)
+        expected_fc3 = len(ph3.dataset.get("displacements", ph3.dataset.get("first_atoms", [])))
+        if expected_fc3 and expected_fc3 != len(forces_fc3):
+            raise RuntimeError(f"FC3 displacement/force cardinality mismatch: {expected_fc3} != {len(forces_fc3)}")
+        ph3.forces = np.asarray(forces_fc3)
+        ph3.supercell_energies = np.asarray(energies_fc3)
+        if forces_fc2:
+            phonon_dataset = getattr(ph3, "phonon_dataset", {})
+            expected_fc2 = len(phonon_dataset.get("displacements", phonon_dataset.get("first_atoms", []))) if isinstance(phonon_dataset, Mapping) else 0
+            if expected_fc2 and expected_fc2 != len(forces_fc2):
+                raise RuntimeError(f"FC2 displacement/force cardinality mismatch: {expected_fc2} != {len(forces_fc2)}")
+            ph3.forces_fc2 = np.asarray(forces_fc2)
     if not hasattr(ph3, "produce_fc3") or not hasattr(ph3, "run_thermal_conductivity"):
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
     ph3.produce_fc3()
     try:
-        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], cutoff_frequency=options["cutoff_frequency"])
+        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], cutoff_frequency=options["cutoff_frequency"], write_kappa=True)
     except TypeError:
         # Older compatible APIs omit cutoff_frequency when it is unset.
         if options["cutoff_frequency"] is not None:
             raise
-        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"])
+        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], write_kappa=True)
     kappa_candidates = sorted(root.glob("kappa*.hdf5")) + sorted(root.glob("kappa*.h5"))
-    gamma_candidates = sorted(root.glob("gamma*.hdf5")) + sorted(root.glob("gamma*.h5"))
+    gamma_candidates = []
+    try:
+        import h5py
+        with h5py.File(kappa_candidates[0], "r") as handle:
+            names = []
+            handle.visit(names.append)
+            gamma_candidates = [kappa_candidates[0]] if any(name.rsplit("/", 1)[-1].startswith("gamma") for name in names) else []
+    except Exception:
+        gamma_candidates = []
     if not kappa_candidates:
         raise RuntimeError("phono3py BTE completed without a canonical kappa HDF5 artifact")
     kappa_path = kappa_candidates[0]
