@@ -90,6 +90,8 @@ def run_phono3py_thermal(
             raise
         ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], write_kappa=True)
     kappa_candidates = sorted(root.glob("kappa*.hdf5")) + sorted(root.glob("kappa*.h5"))
+    if not kappa_candidates:
+        raise RuntimeError("phono3py BTE completed without a canonical kappa HDF5 artifact")
     gamma_candidates = []
     try:
         import h5py
@@ -99,8 +101,6 @@ def run_phono3py_thermal(
             gamma_candidates = [kappa_candidates[0]] if any(name.rsplit("/", 1)[-1].startswith("gamma") for name in names) else []
     except Exception:
         gamma_candidates = []
-    if not kappa_candidates:
-        raise RuntimeError("phono3py BTE completed without a canonical kappa HDF5 artifact")
     kappa_path = kappa_candidates[0]
     gamma_path = gamma_candidates[0] if gamma_candidates else None
     if hasattr(ph3, "save"):
