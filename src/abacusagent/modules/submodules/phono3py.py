@@ -83,12 +83,12 @@ def run_phono3py_thermal(
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
     ph3.produce_fc3()
     try:
-        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], cutoff_frequency=options["cutoff_frequency"], write_kappa=True)
+        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], cutoff_frequency=options["cutoff_frequency"], write_kappa=True, write_gamma=True)
     except TypeError:
         # Older compatible APIs omit cutoff_frequency when it is unset.
         if options["cutoff_frequency"] is not None:
             raise
-        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], write_kappa=True)
+        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], write_kappa=True, write_gamma=True)
     kappa_candidates = sorted(root.glob("kappa*.hdf5")) + sorted(root.glob("kappa*.h5"))
     if not kappa_candidates:
         raise RuntimeError("phono3py BTE completed without a canonical kappa HDF5 artifact")
