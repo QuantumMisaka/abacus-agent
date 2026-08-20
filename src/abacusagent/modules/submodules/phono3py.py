@@ -51,12 +51,13 @@ def run_phono3py_thermal(
 
     ph3 = phono3py.load(str(yaml_path))
     if jobs:
-        forces_fc3, energies_fc3, forces_fc2 = [], [], []
+        forces_fc3, energies_fc3, forces_fc2, energies_fc2 = [], [], [], []
         for job, kind in typed_jobs:
             try:
                 labelled = dpdata.LabeledSystem(str(job), fmt="abacus/scf")
                 if kind == "fc2":
                     forces_fc2.append(labelled["forces"][0])
+                    energies_fc2.append(labelled["energies"][0])
                 else:
                     forces_fc3.append(labelled["forces"][0])
                     energies_fc3.append(labelled["energies"][0])
@@ -74,7 +75,10 @@ def run_phono3py_thermal(
             expected_fc2 = len(phonon_dataset.get("displacements", phonon_dataset.get("first_atoms", []))) if isinstance(phonon_dataset, Mapping) else 0
             if expected_fc2 and expected_fc2 != len(forces_fc2):
                 raise RuntimeError(f"FC2 displacement/force cardinality mismatch: {expected_fc2} != {len(forces_fc2)}")
-            ph3.forces_fc2 = np.asarray(forces_fc2)
+            # Phono3py names the second-order force payload
+            # ``phonon_forces`` (not ``forces_fc2``).
+            ph3.phonon_forces = np.asarray(forces_fc2)
+            ph3.phonon_supercell_energies = np.asarray(energies_fc2)
     if not hasattr(ph3, "produce_fc3") or not hasattr(ph3, "run_thermal_conductivity"):
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
     ph3.produce_fc3()
