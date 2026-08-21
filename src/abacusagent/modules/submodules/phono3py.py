@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import importlib.util
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -159,7 +160,16 @@ def run_phono3py_thermal(
             ph3.phonon_supercell_energies = records["energies_fc2"]
     if not hasattr(ph3, "produce_fc3") or not hasattr(ph3, "run_thermal_conductivity"):
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
-    ph3.produce_fc3()
+    dataset_type = str((getattr(ph3, "dataset", {}) or {}).get("type", "i")).lower()
+    if "ii" in dataset_type:
+        if importlib.util.find_spec("symfc") is None:
+            raise RuntimeError(
+                "random (Type-II) phono3py displacements require the symfc "
+                "force-constants calculator, which is not installed in this runtime"
+            )
+        ph3.produce_fc3(fc_calculator="symfc")
+    else:
+        ph3.produce_fc3()
     # ``supercell_fc2`` is serialized by phono3py as the independent
     # ``phonon_supercell_matrix``.  In phono3py 4.1.0 this path does not
     # close FC2 as a side effect of ``produce_fc3``; it must be produced
