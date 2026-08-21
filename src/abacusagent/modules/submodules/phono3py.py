@@ -79,23 +79,29 @@ def collect_force_energy_records(
 
 
 def _set_compatibility_controls(ph3: Any, options: Mapping[str, Any]) -> None:
-    """Preserve controls when retrying APIs that reject keyword arguments."""
-    controls = {
-        "mesh": options["mesh"],
-        "cutoff_frequency": options["cutoff_frequency"],
-        "is_isotope": options["isotope"],
-        "is_N_U": options["use_N_U"],
-        "boundary_mfp": options["boundary_mfp"],
-    }
-    for name, value in controls.items():
-        if value is None:
-            continue
-        try:
-            setattr(ph3, name, value)
-            if getattr(ph3, name) != value:
-                raise RuntimeError(f"phono3py compatibility control was not retained: {name}")
-        except Exception as exc:
-            raise RuntimeError(f"cannot preserve phono3py compatibility control: {name}") from exc
+    """Configure controls through phono3py's actual object contract."""
+    mesh = options["mesh"]
+    if not hasattr(type(ph3), "mesh_numbers"):
+        raise RuntimeError("phono3py object lacks the mesh_numbers property")
+    ph3.mesh_numbers = mesh
+    if list(ph3.mesh_numbers) != list(mesh):
+        raise RuntimeError("phono3py mesh_numbers was not retained")
+    cutoff = options["cutoff_frequency"]
+    if cutoff is not None:
+        # phono3py 4.x has no public setter; this is the constructor-owned
+        # state used by _set_mesh_numbers and is deliberately verified.
+        if not hasattr(ph3, "_cutoff_frequency"):
+            raise RuntimeError("phono3py object lacks supported cutoff_frequency state")
+        ph3._cutoff_frequency = float(cutoff)
+        if float(ph3._cutoff_frequency) != float(cutoff):
+            raise RuntimeError("phono3py cutoff_frequency was not retained")
+
+
+def _init_phph_interaction_if_required(ph3: Any) -> None:
+    initializer = getattr(ph3, "init_phph_interaction", None)
+    if initializer is None:
+        raise RuntimeError("installed phono3py API lacks init_phph_interaction")
+    initializer()
 
 
 def run_phono3py_thermal(
@@ -154,6 +160,11 @@ def run_phono3py_thermal(
     if not hasattr(ph3, "produce_fc3") or not hasattr(ph3, "run_thermal_conductivity"):
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
     ph3.produce_fc3()
+    # Configure the object as well as the call signature.  This is required
+    # even for releases that still accept legacy keywords, because mesh and
+    # cutoff are consumed by the interaction initialization path.
+    _set_compatibility_controls(ph3, options)
+    _init_phph_interaction_if_required(ph3)
     old_cwd = Path.cwd()
     try:
         os.chdir(root)
@@ -161,7 +172,7 @@ def run_phono3py_thermal(
             ph3.run_thermal_conductivity(
                 mesh=options["mesh"], temperatures=options["temperatures"],
                 cutoff_frequency=options["cutoff_frequency"], is_isotope=options["isotope"],
-                is_N_U=options["use_N_U"], boundary_mfp=options["boundary_mfp"],
+                is_N_U=options["use_N_U"], boundary_mfp=options["boundary_mfp_api_um"],
                 write_kappa=True, write_gamma=True,
             )
         except TypeError:
@@ -169,10 +180,11 @@ def run_phono3py_thermal(
             # object.  Set and verify every control before retrying; a retry
             # that drops a requested control is scientifically unsafe.
             _set_compatibility_controls(ph3, options)
+            _init_phph_interaction_if_required(ph3)
             ph3.run_thermal_conductivity(
                 temperatures=options["temperatures"],
                 is_isotope=options["isotope"], is_N_U=options["use_N_U"],
-                boundary_mfp=options["boundary_mfp"],
+                boundary_mfp=options["boundary_mfp_api_um"],
                 write_kappa=True, write_gamma=True,
             )
     finally:
