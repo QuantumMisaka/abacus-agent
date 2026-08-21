@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import importlib.util
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -19,11 +18,35 @@ from abacusagent.modules.util.comm import run_abacus
 def _dataset_count(dataset: Mapping[str, Any] | None) -> int:
     if not isinstance(dataset, Mapping):
         return 0
-    for key in ("displacements", "first_atoms"):
-        value = dataset.get(key)
-        if value is not None:
-            return len(value)
+    displacements = dataset.get("displacements")
+    if displacements is not None:
+        return len(displacements)
+    first_atoms = dataset.get("first_atoms")
+    if first_atoms is not None:
+        # Type-I FC3 datasets nest pair displacements under each first atom's
+        # ``second_atoms``; every first- and second-atom entry maps to one
+        # displacement job, so the flat job count is the flattened sum.
+        return sum(1 + len(entry.get("second_atoms") or []) for entry in first_atoms)
     return 0
+
+
+def _is_type_ii_dataset(dataset: Any) -> bool:
+    """Type-II (random snapshot) datasets carry a flat ``displacements`` key.
+
+    Real phono3py dataset mappings have no ``type`` key; the displacement
+    layout is the only reliable discriminator across supported versions.
+    """
+    return isinstance(dataset, Mapping) and dataset.get("displacements") is not None
+
+
+def _require_symfc() -> None:
+    try:
+        import symfc  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "random (Type-II) phono3py displacements require the symfc "
+            "force-constants calculator, which is not installed in this runtime"
+        ) from exc
 
 
 def collect_force_energy_records(
@@ -145,11 +168,21 @@ def run_phono3py_thermal(
         for job in jobs:
             if not job.is_dir() or root not in job.parents:
                 raise ValueError("displacement jobs must be existing directories contained in work_dir")
-        run_abacus(jobs)
     import phono3py
 
+    # Load before running any job so a runtime that cannot close the loaded
+    # dataset (e.g. Type-II without symfc) fails before burning SCF compute.
     ph3 = phono3py.load(str(yaml_path))
+    fc3_calculator = None
+    if _is_type_ii_dataset(getattr(ph3, "dataset", None)):
+        _require_symfc()
+        fc3_calculator = "symfc"
+    fc2_calculator = None
+    if _is_type_ii_dataset(getattr(ph3, "phonon_dataset", None)):
+        _require_symfc()
+        fc2_calculator = "symfc"
     if jobs:
+        run_abacus(jobs)
         records = collect_force_energy_records(ph3, typed_jobs, work_dir=root)
         ph3.forces = records["forces_fc3"]
         ph3.supercell_energies = records["energies_fc3"]
@@ -160,14 +193,8 @@ def run_phono3py_thermal(
             ph3.phonon_supercell_energies = records["energies_fc2"]
     if not hasattr(ph3, "produce_fc3") or not hasattr(ph3, "run_thermal_conductivity"):
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
-    dataset_type = str((getattr(ph3, "dataset", {}) or {}).get("type", "i")).lower()
-    if "ii" in dataset_type:
-        if importlib.util.find_spec("symfc") is None:
-            raise RuntimeError(
-                "random (Type-II) phono3py displacements require the symfc "
-                "force-constants calculator, which is not installed in this runtime"
-            )
-        ph3.produce_fc3(fc_calculator="symfc")
+    if fc3_calculator is not None:
+        ph3.produce_fc3(fc_calculator=fc3_calculator)
     else:
         ph3.produce_fc3()
     # ``supercell_fc2`` is serialized by phono3py as the independent
@@ -177,7 +204,10 @@ def run_phono3py_thermal(
     if getattr(ph3, "phonon_supercell_matrix", None) is not None:
         if not hasattr(ph3, "produce_fc2"):
             raise RuntimeError("installed phono3py API lacks produce_fc2 for independent FC2 supercell")
-        ph3.produce_fc2()
+        if fc2_calculator is not None:
+            ph3.produce_fc2(fc_calculator=fc2_calculator)
+        else:
+            ph3.produce_fc2()
     # Configure the object as well as the call signature.  This is required
     # even for releases that still accept legacy keywords, because mesh and
     # cutoff are consumed by the interaction initialization path.
