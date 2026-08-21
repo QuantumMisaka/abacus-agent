@@ -22,12 +22,22 @@ def run_phono3py_thermal(
     mesh: Sequence[int] = (2, 2, 2),
     temperatures: Sequence[float] = (300.0,),
     cutoff_frequency: float | None = None,
+    isotope: bool | None = None,
+    use_N_U: bool | None = None,
+    boundary_mfp: float | None = None,
+    boundary_length: float | None = None,
     runtime_contract: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run force jobs, close FC2/FC3 and BTE, and return canonical artifacts."""
     from toolkits.phono3py_thermal import validate_runtime_contract, validate_thermal_options
 
-    options = validate_thermal_options(mesh=mesh, temperatures=temperatures, cutoff_frequency=cutoff_frequency)
+    options = validate_thermal_options(
+        mesh=mesh, temperatures=temperatures, cutoff_frequency=cutoff_frequency,
+        isotope=isotope, use_N_U=use_N_U, boundary_mfp=boundary_mfp,
+        boundary_length=boundary_length,
+    )
+    # The expected version/API snapshot is a required input.  An empty
+    # mapping must never make a live runtime self-validate against itself.
     contract = validate_runtime_contract(runtime_contract or {})
     root = Path(work_dir).resolve()
     yaml_path = Path(displacement_yaml).resolve()
@@ -83,12 +93,22 @@ def run_phono3py_thermal(
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
     ph3.produce_fc3()
     try:
-        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], cutoff_frequency=options["cutoff_frequency"], write_kappa=True, write_gamma=True)
+        ph3.run_thermal_conductivity(
+            mesh=options["mesh"], temperatures=options["temperatures"],
+            cutoff_frequency=options["cutoff_frequency"], is_isotope=options["isotope"],
+            is_N_U=options["use_N_U"], boundary_mfp=options["boundary_mfp"],
+            write_kappa=True, write_gamma=True,
+        )
     except TypeError:
-        # Older compatible APIs omit cutoff_frequency when it is unset.
-        if options["cutoff_frequency"] is not None:
-            raise
-        ph3.run_thermal_conductivity(mesh=options["mesh"], temperatures=options["temperatures"], write_kappa=True, write_gamma=True)
+        # Canonical phono3py 4.x consumes mesh/cutoff through the loaded
+        # object and names the controls is_isotope/is_N_U.  Keep the first
+        # call for older closure-compatible adapters, then retry using the
+        # installed API's stable argument names when it rejects extras.
+        ph3.run_thermal_conductivity(
+            temperatures=options["temperatures"], is_isotope=options["isotope"],
+            is_N_U=options["use_N_U"], boundary_mfp=options["boundary_mfp"],
+            write_kappa=True, write_gamma=True,
+        )
     kappa_candidates = sorted(root.glob("kappa*.hdf5")) + sorted(root.glob("kappa*.h5"))
     if not kappa_candidates:
         raise RuntimeError("phono3py BTE completed without a canonical kappa HDF5 artifact")
