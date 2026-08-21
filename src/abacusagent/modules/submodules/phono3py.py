@@ -8,10 +8,94 @@ adapter never invents a phono3py version.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from abacusagent.modules.util.comm import run_abacus
+
+
+def _dataset_count(dataset: Mapping[str, Any] | None) -> int:
+    if not isinstance(dataset, Mapping):
+        return 0
+    for key in ("displacements", "first_atoms"):
+        value = dataset.get(key)
+        if value is not None:
+            return len(value)
+    return 0
+
+
+def collect_force_energy_records(
+    ph3: Any,
+    jobs: Sequence[tuple[Path, str]],
+    *,
+    work_dir: Path,
+) -> dict[str, Any]:
+    """Collect displacement records with one strict, shared contract.
+
+    Both split collection and one-shot closure use this helper.  A missing,
+    unreadable, or out-of-order job is a hard failure: silently dropping a
+    force/energy row changes the displacement-to-force mapping and can make a
+    formally successful BTE physically meaningless.
+    """
+    import dpdata
+    import numpy as np
+
+    root = work_dir.resolve()
+    grouped: dict[str, list[tuple[Path, Any, Any]]] = {"fc3": [], "fc2": []}
+    for raw_path, raw_kind in jobs:
+        path = Path(raw_path).resolve()
+        kind = str(raw_kind or "fc3").lower()
+        if kind not in grouped:
+            raise ValueError(f"unsupported phono3py displacement kind: {kind}")
+        if not path.is_dir() or root not in path.parents:
+            raise ValueError("displacement jobs must be existing directories contained in work_dir")
+        try:
+            labelled = dpdata.LabeledSystem(str(path), fmt="abacus/scf")
+            forces = labelled["forces"]
+            energies = labelled["energies"]
+            if len(forces) != 1 or len(energies) != 1:
+                raise ValueError("each ABACUS displacement job must contain exactly one frame")
+            grouped[kind].append((path, forces[0], energies[0]))
+        except Exception as exc:
+            raise RuntimeError(f"failed to collect force/energy from displacement job {path}") from exc
+
+    expected_fc3 = _dataset_count(getattr(ph3, "dataset", None))
+    expected_fc2 = _dataset_count(getattr(ph3, "phonon_dataset", None))
+    for kind, expected in (("fc3", expected_fc3), ("fc2", expected_fc2)):
+        actual = len(grouped[kind])
+        if expected and actual != expected:
+            raise RuntimeError(f"{kind.upper()} displacement/force cardinality mismatch: {expected} != {actual}")
+    if not grouped["fc3"]:
+        raise RuntimeError("no FC3 displacement force/energy records were collected")
+
+    return {
+        "forces_fc3": np.asarray([row[1] for row in grouped["fc3"]]),
+        "energies_fc3": np.asarray([row[2] for row in grouped["fc3"]]),
+        "forces_fc2": np.asarray([row[1] for row in grouped["fc2"]]),
+        "energies_fc2": np.asarray([row[2] for row in grouped["fc2"]]),
+        "completed_jobs": [row[0].name for kind in ("fc3", "fc2") for row in grouped[kind]],
+    }
+
+
+def _set_compatibility_controls(ph3: Any, options: Mapping[str, Any]) -> None:
+    """Preserve controls when retrying APIs that reject keyword arguments."""
+    controls = {
+        "mesh": options["mesh"],
+        "cutoff_frequency": options["cutoff_frequency"],
+        "is_isotope": options["isotope"],
+        "is_N_U": options["use_N_U"],
+        "boundary_mfp": options["boundary_mfp"],
+    }
+    for name, value in controls.items():
+        if value is None:
+            continue
+        try:
+            setattr(ph3, name, value)
+            if getattr(ph3, name) != value:
+                raise RuntimeError(f"phono3py compatibility control was not retained: {name}")
+        except Exception as exc:
+            raise RuntimeError(f"cannot preserve phono3py compatibility control: {name}") from exc
 
 
 def run_phono3py_thermal(
@@ -56,59 +140,43 @@ def run_phono3py_thermal(
                 raise ValueError("displacement jobs must be existing directories contained in work_dir")
         run_abacus(jobs)
     import phono3py
-    import dpdata
-    import numpy as np
 
     ph3 = phono3py.load(str(yaml_path))
     if jobs:
-        forces_fc3, energies_fc3, forces_fc2, energies_fc2 = [], [], [], []
-        for job, kind in typed_jobs:
-            try:
-                labelled = dpdata.LabeledSystem(str(job), fmt="abacus/scf")
-                if kind == "fc2":
-                    forces_fc2.append(labelled["forces"][0])
-                    energies_fc2.append(labelled["energies"][0])
-                else:
-                    forces_fc3.append(labelled["forces"][0])
-                    energies_fc3.append(labelled["energies"][0])
-            except Exception as exc:
-                raise RuntimeError(f"failed to collect force/energy from displacement job {job}") from exc
-        if not forces_fc3:
-            raise RuntimeError("no displacement force/energy records were collected")
-        expected_fc3 = len(ph3.dataset.get("displacements", ph3.dataset.get("first_atoms", [])))
-        if expected_fc3 and expected_fc3 != len(forces_fc3):
-            raise RuntimeError(f"FC3 displacement/force cardinality mismatch: {expected_fc3} != {len(forces_fc3)}")
-        ph3.forces = np.asarray(forces_fc3)
-        ph3.supercell_energies = np.asarray(energies_fc3)
-        if forces_fc2:
-            phonon_dataset = getattr(ph3, "phonon_dataset", {})
-            expected_fc2 = len(phonon_dataset.get("displacements", phonon_dataset.get("first_atoms", []))) if isinstance(phonon_dataset, Mapping) else 0
-            if expected_fc2 and expected_fc2 != len(forces_fc2):
-                raise RuntimeError(f"FC2 displacement/force cardinality mismatch: {expected_fc2} != {len(forces_fc2)}")
+        records = collect_force_energy_records(ph3, typed_jobs, work_dir=root)
+        ph3.forces = records["forces_fc3"]
+        ph3.supercell_energies = records["energies_fc3"]
+        if len(records["forces_fc2"]):
             # Phono3py names the second-order force payload
             # ``phonon_forces`` (not ``forces_fc2``).
-            ph3.phonon_forces = np.asarray(forces_fc2)
-            ph3.phonon_supercell_energies = np.asarray(energies_fc2)
+            ph3.phonon_forces = records["forces_fc2"]
+            ph3.phonon_supercell_energies = records["energies_fc2"]
     if not hasattr(ph3, "produce_fc3") or not hasattr(ph3, "run_thermal_conductivity"):
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
     ph3.produce_fc3()
+    old_cwd = Path.cwd()
     try:
-        ph3.run_thermal_conductivity(
-            mesh=options["mesh"], temperatures=options["temperatures"],
-            cutoff_frequency=options["cutoff_frequency"], is_isotope=options["isotope"],
-            is_N_U=options["use_N_U"], boundary_mfp=options["boundary_mfp"],
-            write_kappa=True, write_gamma=True,
-        )
-    except TypeError:
-        # Canonical phono3py 4.x consumes mesh/cutoff through the loaded
-        # object and names the controls is_isotope/is_N_U.  Keep the first
-        # call for older closure-compatible adapters, then retry using the
-        # installed API's stable argument names when it rejects extras.
-        ph3.run_thermal_conductivity(
-            temperatures=options["temperatures"], is_isotope=options["isotope"],
-            is_N_U=options["use_N_U"], boundary_mfp=options["boundary_mfp"],
-            write_kappa=True, write_gamma=True,
-        )
+        os.chdir(root)
+        try:
+            ph3.run_thermal_conductivity(
+                mesh=options["mesh"], temperatures=options["temperatures"],
+                cutoff_frequency=options["cutoff_frequency"], is_isotope=options["isotope"],
+                is_N_U=options["use_N_U"], boundary_mfp=options["boundary_mfp"],
+                write_kappa=True, write_gamma=True,
+            )
+        except TypeError:
+            # Some supported releases consume mesh/cutoff through the loaded
+            # object.  Set and verify every control before retrying; a retry
+            # that drops a requested control is scientifically unsafe.
+            _set_compatibility_controls(ph3, options)
+            ph3.run_thermal_conductivity(
+                temperatures=options["temperatures"],
+                is_isotope=options["isotope"], is_N_U=options["use_N_U"],
+                boundary_mfp=options["boundary_mfp"],
+                write_kappa=True, write_gamma=True,
+            )
+    finally:
+        os.chdir(old_cwd)
     kappa_candidates = sorted(root.glob("kappa*.hdf5")) + sorted(root.glob("kappa*.h5"))
     if not kappa_candidates:
         raise RuntimeError("phono3py BTE completed without a canonical kappa HDF5 artifact")
