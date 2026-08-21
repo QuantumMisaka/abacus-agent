@@ -160,6 +160,14 @@ def run_phono3py_thermal(
     if not hasattr(ph3, "produce_fc3") or not hasattr(ph3, "run_thermal_conductivity"):
         raise RuntimeError("installed phono3py API lacks FC3/BTE closure methods")
     ph3.produce_fc3()
+    # ``supercell_fc2`` is serialized by phono3py as the independent
+    # ``phonon_supercell_matrix``.  In phono3py 4.1.0 this path does not
+    # close FC2 as a side effect of ``produce_fc3``; it must be produced
+    # before initializing the ph-ph interaction used by the BTE.
+    if getattr(ph3, "phonon_supercell_matrix", None) is not None:
+        if not hasattr(ph3, "produce_fc2"):
+            raise RuntimeError("installed phono3py API lacks produce_fc2 for independent FC2 supercell")
+        ph3.produce_fc2()
     # Configure the object as well as the call signature.  This is required
     # even for releases that still accept legacy keywords, because mesh and
     # cutoff are consumed by the interaction initialization path.
