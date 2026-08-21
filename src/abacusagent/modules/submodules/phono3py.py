@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -237,7 +238,12 @@ def run_phono3py_thermal(
             )
     finally:
         os.chdir(old_cwd)
-    kappa_candidates = sorted(root.glob("kappa*.hdf5")) + sorted(root.glob("kappa*.h5"))
+    all_kappa = sorted(root.glob("kappa*.hdf5")) + sorted(root.glob("kappa*.h5"))
+    # ``write_gamma=True`` also emits per-grid-point ``kappa-m<mesh>-g<gp>.hdf5``
+    # files that sort before the canonical ``kappa-m<mesh>.hdf5``.  The canonical
+    # thermal-conductivity tensor must not be confused with a gamma component.
+    canonical = [path for path in all_kappa if not re.search(r"-g\d+\.(?:hdf5|h5)$", path.name)]
+    kappa_candidates = canonical or all_kappa
     if not kappa_candidates:
         raise RuntimeError("phono3py BTE completed without a canonical kappa HDF5 artifact")
     gamma_candidates = []
