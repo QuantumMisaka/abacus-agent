@@ -74,10 +74,7 @@ def _job_is_completed(path: Path) -> bool:
         labelled = dpdata.LabeledSystem(str(path), fmt="abacus/scf")
         forces = labelled["forces"]
         energies = labelled["energies"]
-        return (
-            getattr(forces, "shape", (0,))[0] == 1
-            and getattr(energies, "shape", (0,))[0] == 1
-        )
+        return len(forces) == 1 and len(energies) == 1
     except Exception:
         return False
 
