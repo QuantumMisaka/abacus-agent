@@ -263,6 +263,18 @@ def run_phono3py_thermal(
             ph3.produce_fc2(fc_calculator=fc2_calculator)
         else:
             ph3.produce_fc2()
+    # Symmetrize the force constants before the BTE step.  Unsymmetrized
+    # FC3/FC2 from finite differences carry numerical noise that inflates
+    # scattering and collapses kappa (systematic-111 benchmark evidence:
+    # 5.57 W/mK unsymmetrized vs 122.46 W/mK with symmetrize_fc3+fc2).
+    # Fail closed on runtimes lacking the API — never run an unsymmetrized
+    # closure silently.
+    if not hasattr(ph3, "symmetrize_fc3"):
+        raise RuntimeError("installed phono3py API lacks symmetrize_fc3 for BTE closure")
+    ph3.symmetrize_fc3()
+    if not hasattr(ph3, "symmetrize_fc2"):
+        raise RuntimeError("installed phono3py API lacks symmetrize_fc2 for BTE closure")
+    ph3.symmetrize_fc2()
     # Configure the object as well as the call signature.  This is required
     # even for releases that still accept legacy keywords, because mesh and
     # cutoff are consumed by the interaction initialization path.
