@@ -50,17 +50,40 @@ def _require_symfc() -> None:
         ) from exc
 
 
-def _job_is_completed(path: Path) -> bool:
-    """Return True when a displacement job already has a collectable result.
+_SCF_CONVERGED_TOKEN = "charge density convergence is achieved"
 
-    Checkpoint-resume treats a job as finished when its directory carries a
-    readable ``abacus.json`` completion marker (written by the parallel array
-    driver) or when dpdata can already load a single SCF frame from the
-    directory.  The latter also recognizes jobs computed by earlier one-shot
-    runs that only left ``OUT.ABACUS`` behind.  Both signals are only
-    heuristics for skipping SCF compute; the final force/energy collection
-    still enforces the full-displacement cardinality contract.
+
+def _scf_log_converged(path: Path) -> bool:
+    """Return True only when the SCF log proves density convergence.
+
+    ABACUS writes ``abacus.json`` on *normal termination* — including an
+    scf_nmax exhaustion exit — so a marker alone must never count as
+    converged.  A missing or unreadable log fails closed (job recomputed):
+    recomputing one displacement SCF is cheap, collecting unconverged forces
+    silently corrupts FC2/FC3.
     """
+    log = path / "OUT.ABACUS" / "running_scf.log"
+    try:
+        return _SCF_CONVERGED_TOKEN in log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def _job_is_completed(path: Path) -> bool:
+    """Return True when a displacement job already has a *converged*, collectable result.
+
+    Checkpoint-resume treats a job as finished only when its SCF log proves
+    charge-density convergence (see :func:`_scf_log_converged`) AND the
+    directory carries a collectable result: a readable ``abacus.json``
+    completion marker (written by ABACUS on normal termination) or a single
+    SCF frame loadable by dpdata.  The latter also recognizes jobs computed
+    by earlier one-shot runs that only left ``OUT.ABACUS`` behind.  Both
+    signals are only heuristics for skipping SCF compute; the final
+    force/energy collection still enforces the full-displacement cardinality
+    contract.
+    """
+    if not _scf_log_converged(path):
+        return False
     marker = path / "abacus.json"
     if marker.is_file():
         try:

@@ -15,6 +15,9 @@ from abacustest.lib_model.comm import check_abacus_inputs
 
 from abacusagent.constant import THZ_TO_K
 from abacusagent.modules.util.comm import run_abacus, generate_work_path, link_abacusjob, collect_metrics
+# Single source of truth for the completion predicate lives in the phono3py
+# closure (checkpoint-resume); reuse it so both phonon routes share semantics.
+from abacusagent.modules.submodules.phono3py import _job_is_completed
 
 
 def get_ph_atoms(stru: AbacusStru):
@@ -85,7 +88,7 @@ def prepare_phonon_dispersion(work_path: Path,
         stru_supercell.set_cell(sc.cell, bohr=False)
         stru_supercell.set_coord(sc.positions, bohr=False)
         dir_name = os.path.join(work_path, f"disp-{structure_index}")
-        os.makedirs(dir_name)
+        os.makedirs(dir_name, exist_ok=True)  # idempotent for checkpoint-resume reruns
         link_abacusjob(abacus_inputs_dir, dir_name)
         stru_supercell.write(os.path.join(dir_name, stru_file))
         WriteInput(input_params, os.path.join(dir_name, "INPUT"))
@@ -218,6 +221,7 @@ def abacus_phonon_dispersion(
     qpath: Optional[Union[List[str], List[List[str]]]] = None,
     high_symm_points: Optional[Dict[str, List[float]]] = None,
     note=None,
+    work_path: Optional[Union[str, Path]] = None,
 ):
     """
     Calculate phonon dispersion with finite-difference method using Phonopy with ABACUS as the calculator. 
@@ -240,6 +244,10 @@ def abacus_phonon_dispersion(
             For example, {'G': [0, 0, 0], 'M': [0.5, 0.0, 0.0], 'K': [0.33333333, 0.33333333, 0.0], 'G': [0, 0, 0]}.
             Default is None. If None, will use automatically generated high symmetry points.
         note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
+        work_path (str or Path, optional): Existing phonon work directory to resume. When given, the directory is
+            reused as-is (no fresh directory is minted) and displacement jobs that already carry a completion
+            marker (a valid ``abacus.json`` or a dpdata-loadable SCF frame) are skipped instead of recomputed.
+            Default is None, which keeps the historical behavior of generating a fresh work directory.
     Returns:
         A dictionary containing:
             - phonon_work_path: Path to the directory containing phonon calculation results.
@@ -255,7 +263,12 @@ def abacus_phonon_dispersion(
         if not is_valid:
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
         
-        work_path = Path(generate_work_path(note=note)).absolute()
+        if work_path is None:
+            work_path = Path(generate_work_path(note=note)).absolute()
+        else:
+            # Checkpoint-resume: reuse the injected directory as-is.
+            work_path = Path(work_path).absolute()
+            work_path.mkdir(parents=True, exist_ok=True)
 
         displaced_job_dirs = prepare_phonon_dispersion(work_path,
                                                        abacus_inputs_dir,
@@ -263,7 +276,14 @@ def abacus_phonon_dispersion(
                                                        displacement_stepsize=displacement_stepsize,
                                                        min_supercell_length=min_supercell_length)
 
-        run_abacus(displaced_job_dirs)
+        pending_job_dirs = [d for d in displaced_job_dirs if not _job_is_completed(Path(d))]
+        if len(pending_job_dirs) < len(displaced_job_dirs):
+            print(
+                f"Checkpoint-resume: {len(displaced_job_dirs) - len(pending_job_dirs)}"
+                f" of {len(displaced_job_dirs)} displacement jobs already completed, skipping."
+            )
+        if pending_job_dirs:
+            run_abacus(pending_job_dirs)
 
         band_dos_plot_path, thermal, freqs, band_payload = postprocess_phonon_dispersion(
             work_path,
