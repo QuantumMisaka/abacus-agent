@@ -50,6 +50,38 @@ def _require_symfc() -> None:
         ) from exc
 
 
+def _job_is_completed(path: Path) -> bool:
+    """Return True when a displacement job already has a collectable result.
+
+    Checkpoint-resume treats a job as finished when its directory carries a
+    readable ``abacus.json`` completion marker (written by the parallel array
+    driver) or when dpdata can already load a single SCF frame from the
+    directory.  The latter also recognizes jobs computed by earlier one-shot
+    runs that only left ``OUT.ABACUS`` behind.  Both signals are only
+    heuristics for skipping SCF compute; the final force/energy collection
+    still enforces the full-displacement cardinality contract.
+    """
+    marker = path / "abacus.json"
+    if marker.is_file():
+        try:
+            json.loads(marker.read_text(encoding="utf-8"))
+            return True
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            pass
+    try:
+        import dpdata
+
+        labelled = dpdata.LabeledSystem(str(path), fmt="abacus/scf")
+        forces = labelled["forces"]
+        energies = labelled["energies"]
+        return (
+            getattr(forces, "shape", (0,))[0] == 1
+            and getattr(energies, "shape", (0,))[0] == 1
+        )
+    except Exception:
+        return False
+
+
 def collect_force_energy_records(
     ph3: Any,
     jobs: Sequence[tuple[Path, str]],
@@ -183,7 +215,9 @@ def run_phono3py_thermal(
         _require_symfc()
         fc2_calculator = "symfc"
     if jobs:
-        run_abacus(jobs)
+        pending_jobs = [job for job in jobs if not _job_is_completed(job)]
+        if pending_jobs:
+            run_abacus(pending_jobs)
         records = collect_force_energy_records(ph3, typed_jobs, work_dir=root)
         ph3.forces = records["forces_fc3"]
         ph3.supercell_energies = records["energies_fc3"]
