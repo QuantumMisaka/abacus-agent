@@ -131,6 +131,7 @@ def abacus_eos(
     )
 
     failure_stage = "input validation"
+    failure_code = None
     work_path = None
     try:
         is_valid, msg = check_abacus_inputs(abacus_inputs_dir)
@@ -156,6 +157,7 @@ def abacus_eos(
         # Generated lattice parameters for EOS calculation
         original_cell = np.asarray(input_stru.get_cell(), dtype=float)
         if not is_cubic(original_cell.tolist()):
+            failure_code = "unsupported_non_cubic_cell"
             raise ValueError("EOS calculation currently supports only cubic cells")
 
         scales = [
@@ -232,6 +234,8 @@ def abacus_eos(
                 f"{type(e).__name__}: {e}"
             ),
         }
+        if failure_code is not None:
+            result["failure_code"] = failure_code
         if work_path is not None:
             result["eos_work_path"] = work_path.absolute()
         return result
