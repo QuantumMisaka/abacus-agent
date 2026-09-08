@@ -119,12 +119,15 @@ def abacus_eos(
         stru_scale_number, scale_stepsize
     )
 
+    failure_stage = "input validation"
+    work_path = None
     try:
         is_valid, msg = check_abacus_inputs(abacus_inputs_dir)
         if not is_valid:
             raise RuntimeError(f"Invalid ABACUS input files: {msg}")
 
         work_path = Path(generate_work_path(note=note)).absolute()
+        failure_stage = "input preparation"
 
         input_params = ReadInput(os.path.join(abacus_inputs_dir, "INPUT"))
         input_stru_file = input_params.get('stru_file', 'STRU')
@@ -175,20 +178,31 @@ def abacus_eos(
             stru.set_cell(new_cell, bohr=False, change_coord=True)
             stru.write(os.path.join(dir_name, input_stru_file))
 
+        failure_stage = "scale-cell execution"
         run_abacus(scale_cell_job_dirs)
 
         energies = []
+        volumes = []
+        failure_stage = "scale-cell result collection"
         for i, job_dir in enumerate(scale_cell_job_dirs):
             metrics = collect_metrics(job_dir)
             if metrics['normal_end'] is not True or metrics['converge'] is not True:
                 raise RuntimeError(f"Job {i} did not end normally or did not converge. Please check the job directory: {job_dir}")
             energies.append(metrics['energy'])
+            point_input = ReadInput(job_dir / "INPUT")
+            point_stru_file = point_input.get("stru_file", "STRU")
+            point_stru = AbacusStru.ReadStru(job_dir / point_stru_file)
+            volumes.append(
+                abs(float(np.linalg.det(np.asarray(point_stru.get_cell(), dtype=float))))
+            )
 
-        volumes = [abs(float(np.linalg.det(cell))) for cell in scaled_cells]
+        failure_stage = "Birch-Murnaghan fit"
         V0, E0, fit_volume, fit_energy, B0, B0_deriv, residual0 = eos_fit(volumes, energies)
         lat_params = np.cbrt(np.array(fit_volume))
+        observed_lat_params = np.cbrt(np.array(volumes))
 
-        fig_path = plot_eos(lat_params, fit_energy, scaled_lat_params, energies)
+        failure_stage = "EOS plot"
+        fig_path = plot_eos(lat_params, fit_energy, observed_lat_params, energies)
 
         return {
             "eos_work_path": work_path.absolute(),
@@ -198,4 +212,12 @@ def abacus_eos(
             "B0": B0,
             "B0_deriv": B0_deriv, }
     except Exception as e:
-        return {"message": f"Fitting EOS failed: {e}"}
+        result = {
+            "message": (
+                f"Fitting EOS failed at {failure_stage}: "
+                f"{type(e).__name__}: {e}"
+            ),
+        }
+        if work_path is not None:
+            result["eos_work_path"] = work_path.absolute()
+        return result
