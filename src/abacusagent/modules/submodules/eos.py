@@ -1,3 +1,5 @@
+import math
+import numbers
 import os
 from pathlib import Path
 from typing import Literal, List
@@ -32,6 +34,39 @@ def is_cubic(cell: List[List[float]]) -> bool:
     else:
         return False
 
+
+def _validate_eos_sampling(
+    stru_scale_number: int,
+    scale_stepsize: float,
+) -> tuple[int, float]:
+    """Validate and normalize the symmetric EOS sampling controls."""
+    if (
+        isinstance(stru_scale_number, bool)
+        or not isinstance(stru_scale_number, numbers.Integral)
+        or stru_scale_number < 2
+    ):
+        raise ValueError("stru_scale_number must be an integer of at least 2")
+
+    if (
+        isinstance(scale_stepsize, bool)
+        or not isinstance(scale_stepsize, numbers.Real)
+    ):
+        raise ValueError("scale_stepsize must be a finite positive real number")
+    step = float(scale_stepsize)
+    if not math.isfinite(step) or step <= 0:
+        raise ValueError("scale_stepsize must be a finite positive real number")
+
+    number = int(stru_scale_number)
+    try:
+        lower_scale = 1.0 - float(number) * step
+    except OverflowError:
+        lower_scale = -math.inf
+    if lower_scale <= 0:
+        raise ValueError(
+            "1 - stru_scale_number * scale_stepsize must be positive"
+        )
+    return number, step
+
 def plot_eos(lat_params, fit_energy, scaled_lat_params, energies):
     import matplotlib.pyplot as plt
     plt.figure(figsize=(8, 6))
@@ -54,12 +89,21 @@ def abacus_eos(
     note=None,
 ):
     """
-    Use Birch-Murnaghan equation of state (EOS) to calculate the EOS data. The shape of fitted crystal is limited to cubic now.
+    Use Birch-Murnaghan equation of state (EOS) to calculate the EOS data. The
+    fitted crystal must be cubic. ``stru_scale_number`` is the number of
+    lattice-length steps on each side of the original cell, so the total number
+    of generated points is ``2 * stru_scale_number + 1``. For example,
+    ``stru_scale_number=5`` and ``scale_stepsize=0.01`` generate 11 points
+    from 0.95 to 1.05 times the original lattice length.
 
     Args:
         abacus_inputs_dir (Path): Path to the ABACUS input files, which contains the INPUT, STRU, KPT, and pseudopotential or orbital files.
-        stru_scale_number (int): Number of structures to generate for EOS calculation.
-        scale_stepsize (float): Step size for scaling. Default is 0.02, which means 2% of the original cell size.
+        stru_scale_number (int): Number of lattice-length steps on each side of
+            the original cell. It must be at least 2; the default 3 generates 7
+            symmetric points.
+        scale_stepsize (float): Positive finite lattice-length step. The
+            default 0.02 samples 2% increments on each side of the original
+            cell.
         note: Optional task label used to name generated work directories. Agent-facing wrappers must pass a non-empty note; None is kept for backward-compatible internal calls.
 
     Returns:
@@ -71,6 +115,10 @@ def abacus_eos(
             - "B0" (float): Bulk modulus (in GPa) at equilibrium volume.
             - "B0_deriv" (float): Pressure derivative of the bulk modulus.
     """
+    stru_scale_number, scale_stepsize = _validate_eos_sampling(
+        stru_scale_number, scale_stepsize
+    )
+
     try:
         is_valid, msg = check_abacus_inputs(abacus_inputs_dir)
         if not is_valid:
@@ -80,36 +128,50 @@ def abacus_eos(
 
         input_params = ReadInput(os.path.join(abacus_inputs_dir, "INPUT"))
         input_stru_file = input_params.get('stru_file', 'STRU')
-        input_stru = AbacusStru.ReadStru(os.path.join(abacus_inputs_dir, input_stru_file))
+        input_stru_dir = work_path / "input_stru"
+        link_abacusjob(
+            src=abacus_inputs_dir,
+            dst=input_stru_dir,
+            copy_files=["INPUT", input_stru_file],
+            exclude=["OUT.*", "*.log", "*.out", "*.json", "log"],
+            exclude_directories=True,
+        )
+        input_params = ReadInput(input_stru_dir / "INPUT")
+        input_stru = AbacusStru.ReadStru(input_stru_dir / input_stru_file)
 
         # Generated lattice parameters for EOS calculation
-        original_cell = input_stru.get_cell()
-        original_cell_param = np.linalg.norm(original_cell[0])
-        scales = [1 + i * scale_stepsize for i in range(-stru_scale_number, stru_scale_number + 1)]
-        scaled_lat_params = [original_cell_param * scale for scale in scales]
+        original_cell = np.asarray(input_stru.get_cell(), dtype=float)
+        if not is_cubic(original_cell.tolist()):
+            raise ValueError("EOS calculation currently supports only cubic cells")
+
+        scales = [
+            1 + i * scale_stepsize
+            for i in range(-stru_scale_number, stru_scale_number + 1)
+        ]
+        scaled_cells = [original_cell * scale for scale in scales]
+        scaled_lat_params = [np.linalg.norm(cell[0]) for cell in scaled_cells]
 
         input_params["calculation"] = 'cell-relax'
         input_params['fixed_axes'] = 'volume'
         input_params['force_thr_ev'] = 0.01
         input_params['stress_thr'] = 1.0
-        WriteInput(input_params, os.path.join(abacus_inputs_dir, "INPUT"))
+        WriteInput(input_params, input_stru_dir / "INPUT")
 
         scale_cell_job_dirs = []
-        stru = copy.deepcopy(input_stru)
-        for i in range(len(scales)):
+        for i, new_cell in enumerate(scaled_cells):
             dir_name = Path(os.path.join(work_path, f"scale_cell_{i}")).absolute()
             os.makedirs(dir_name, exist_ok=True)
             scale_cell_job_dirs.append(dir_name)
 
             link_abacusjob(
-                src=abacus_inputs_dir,
+                src=input_stru_dir,
                 dst=Path(dir_name).absolute(),
                 copy_files=["INPUT", input_stru_file],
                 exclude=["OUT.*", "*.log", "*.out", "*.json", "log"],
                 exclude_directories=True
             )
 
-            new_cell = (np.array(input_stru.get_cell()) * scales[i]).tolist()
+            stru = copy.deepcopy(input_stru)
             stru.set_cell(new_cell, bohr=False, change_coord=True)
             stru.write(os.path.join(dir_name, input_stru_file))
 
@@ -122,7 +184,7 @@ def abacus_eos(
                 raise RuntimeError(f"Job {i} did not end normally or did not converge. Please check the job directory: {job_dir}")
             energies.append(metrics['energy'])
 
-        volumes = [x**3 for x in scaled_lat_params]
+        volumes = [abs(float(np.linalg.det(cell))) for cell in scaled_cells]
         V0, E0, fit_volume, fit_energy, B0, B0_deriv, residual0 = eos_fit(volumes, energies)
         lat_params = np.cbrt(np.array(fit_volume))
 
