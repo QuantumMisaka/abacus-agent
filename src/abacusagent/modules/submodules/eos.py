@@ -210,7 +210,9 @@ def abacus_eos(
             "E0": E0,
             "V0": V0,
             "B0": B0,
-            "B0_deriv": B0_deriv, }
+            "B0_deriv": B0_deriv,
+            "fit_quality": {"residual": residual0},
+        }
     except Exception as e:
         result = {
             "message": (
