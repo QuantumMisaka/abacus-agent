@@ -11,6 +11,17 @@ from abacustest.lib_model.comm import check_abacus_inputs
 
 from abacusagent.modules.util.comm import run_abacus, link_abacusjob, generate_work_path, collect_metrics
 
+
+def _read_eos_stru(path):
+    """Translate the pinned STRU parser's input rejection into a regular error."""
+    try:
+        return AbacusStru.ReadStru(path)
+    except SystemExit as exc:
+        if exc.code != 1:
+            raise
+        raise ValueError(f"EOS could not read STRU: {path}") from exc
+
+
 def is_cubic(cell: List[List[float]]) -> bool:
     """
     Check if the cell is cubic.
@@ -140,7 +151,7 @@ def abacus_eos(
             exclude_directories=True,
         )
         input_params = ReadInput(input_stru_dir / "INPUT")
-        input_stru = AbacusStru.ReadStru(input_stru_dir / input_stru_file)
+        input_stru = _read_eos_stru(input_stru_dir / input_stru_file)
 
         # Generated lattice parameters for EOS calculation
         original_cell = np.asarray(input_stru.get_cell(), dtype=float)
@@ -191,7 +202,7 @@ def abacus_eos(
             energies.append(metrics['energy'])
             point_input = ReadInput(job_dir / "INPUT")
             point_stru_file = point_input.get("stru_file", "STRU")
-            point_stru = AbacusStru.ReadStru(job_dir / point_stru_file)
+            point_stru = _read_eos_stru(job_dir / point_stru_file)
             volumes.append(
                 abs(float(np.linalg.det(np.asarray(point_stru.get_cell(), dtype=float))))
             )
