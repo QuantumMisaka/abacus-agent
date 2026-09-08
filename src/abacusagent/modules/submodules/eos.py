@@ -226,6 +226,7 @@ def abacus_eos(
         }
     except Exception as e:
         result = {
+            "failure_stage": failure_stage,
             "message": (
                 f"Fitting EOS failed at {failure_stage}: "
                 f"{type(e).__name__}: {e}"
