@@ -1,6 +1,7 @@
 import math
 import numbers
 import os
+import shutil
 from pathlib import Path
 from typing import Literal, List
 import copy
@@ -20,6 +21,43 @@ def _read_eos_stru(path):
         if exc.code != 1:
             raise
         raise ValueError(f"EOS could not read STRU: {path}") from exc
+
+
+def _resolve_eos_stru_path(inputs_dir: Path, stru_reference: str) -> Path:
+    """Resolve the selected EOS structure before entering private staging."""
+    reference = Path(str(stru_reference))
+    if not reference.is_absolute():
+        reference = Path(inputs_dir) / reference
+    resolved = reference.resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"EOS STRU file does not exist: {resolved}")
+    return resolved
+
+
+def _stage_eos_inputs(
+    inputs_dir: Path,
+    work_path: Path,
+    input_stru_reference: str,
+) -> tuple[Path, dict, object]:
+    """Create an EOS-private input copy with a local structure reference."""
+    input_stru_dir = work_path / "input_stru"
+    source_stru_path = _resolve_eos_stru_path(inputs_dir, input_stru_reference)
+    link_abacusjob(
+        src=inputs_dir,
+        dst=input_stru_dir,
+        copy_files=["INPUT"],
+        exclude=["OUT.*", "*.log", "*.out", "*.json", "log"],
+        exclude_directories=True,
+    )
+
+    staged_stru_path = input_stru_dir / "STRU"
+    if staged_stru_path.exists() or staged_stru_path.is_symlink():
+        staged_stru_path.unlink()
+    shutil.copy2(source_stru_path, staged_stru_path)
+
+    staged_input = ReadInput(input_stru_dir / "INPUT")
+    staged_input["stru_file"] = "STRU"
+    return input_stru_dir, staged_input, _read_eos_stru(staged_stru_path)
 
 
 def is_cubic(cell: List[List[float]]) -> bool:
@@ -142,17 +180,13 @@ def abacus_eos(
         failure_stage = "input preparation"
 
         input_params = ReadInput(os.path.join(abacus_inputs_dir, "INPUT"))
-        input_stru_file = input_params.get('stru_file', 'STRU')
-        input_stru_dir = work_path / "input_stru"
-        link_abacusjob(
-            src=abacus_inputs_dir,
-            dst=input_stru_dir,
-            copy_files=["INPUT", input_stru_file],
-            exclude=["OUT.*", "*.log", "*.out", "*.json", "log"],
-            exclude_directories=True,
+        input_stru_reference = input_params.get("stru_file", "STRU")
+        input_stru_dir, input_params, input_stru = _stage_eos_inputs(
+            Path(abacus_inputs_dir),
+            work_path,
+            input_stru_reference,
         )
-        input_params = ReadInput(input_stru_dir / "INPUT")
-        input_stru = _read_eos_stru(input_stru_dir / input_stru_file)
+        input_stru_file = "STRU"
 
         # Generated lattice parameters for EOS calculation
         original_cell = np.asarray(input_stru.get_cell(), dtype=float)
