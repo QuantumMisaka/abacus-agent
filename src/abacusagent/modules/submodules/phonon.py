@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import phonopy
 from phonopy import Phonopy
+from phonopy.file_IO import write_FORCE_CONSTANTS
 from phonopy.harmonic.dynmat_to_fc import get_commensurate_points
 from phonopy.structure.atoms import PhonopyAtoms
 from phonopy.structure.cells import get_primitive_matrix_with_auto
@@ -132,6 +133,10 @@ def postprocess_phonon_dispersion(
     phonon.forces = force_sets
     phonon.produce_force_constants()
     phonon.symmetrize_force_constants()
+    # The wrapper publishes only a work directory, so materialize the
+    # symmetrized in-memory force constants at the canonical handoff path.
+    force_constants_path = Path(work_path) / "FORCE_CONSTANTS"
+    write_FORCE_CONSTANTS(phonon.force_constants, filename=force_constants_path)
 
     phonon.run_mesh([20, 20, 20], with_eigenvectors=True, is_mesh_symmetry=False)
     phonon.run_thermal_properties(temperatures=[temperature])

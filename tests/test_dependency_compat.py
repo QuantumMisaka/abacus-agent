@@ -194,7 +194,9 @@ def test_band_submodule_accepts_and_forwards_note(monkeypatch, tmp_path):
     calls = []
 
     class FakeStru:
-        def get_kline(self, point_number, new_stru_file, kpt_file):
+        def get_kline(self, *, orig_cell, point_number, new_stru_file, kpt_file):
+            assert orig_cell is True
+            assert new_stru_file is None
             return FakeStru(), None, None, None
 
         def get_natoms(self):
@@ -218,6 +220,15 @@ def test_band_submodule_accepts_and_forwards_note(monkeypatch, tmp_path):
 
     monkeypatch.setattr(band_module, "ReadInput", lambda path: {"stru_file": "STRU"})
     monkeypatch.setattr(band_module, "AbacusStru", FakeAbacusStru)
+    inputs_path = tmp_path / "inputs"
+    inputs_path.mkdir()
+    for name in ("INPUT", "STRU", "KPT"):
+        (inputs_path / name).write_text(name, encoding="utf-8")
+    monkeypatch.setattr(
+        band_module,
+        "generate_work_path",
+        lambda **_kwargs: str(tmp_path / "staged-inputs"),
+    )
     monkeypatch.setattr(band_module, "WriteKpt", lambda *args, **kwargs: None)
     monkeypatch.setattr(band_module, "property_calculation_scf", fake_property_calculation_scf)
     monkeypatch.setattr(
@@ -229,11 +240,11 @@ def test_band_submodule_accepts_and_forwards_note(monkeypatch, tmp_path):
         },
     )
 
-    result = band_module.abacus_cal_band(tmp_path / "inputs", note="Si-band")
+    result = band_module.abacus_cal_band(inputs_path, note="Si-band")
 
     assert calls == [
         {
-            "path": tmp_path / "inputs",
+            "path": tmp_path / "staged-inputs",
             "mode": "auto",
             "always_run": False,
             "note": "Si-band",
@@ -256,11 +267,15 @@ def test_band_nscf_line_kpt_clears_inherited_gamma_selectors(monkeypatch, tmp_pa
     work_path.mkdir()
     inputs_path = tmp_path / "inputs"
     inputs_path.mkdir()
+    for name in ("INPUT", "STRU", "KPT"):
+        (inputs_path / name).write_text(name, encoding="utf-8")
     written = {}
     copied = {}
 
     class FakeStru:
-        def get_kline(self, point_number, new_stru_file, kpt_file):
+        def get_kline(self, *, orig_cell, point_number, new_stru_file, kpt_file):
+            assert orig_cell is True
+            assert new_stru_file is None
             Path(kpt_file).write_text("K_POINTS\n2\nLine\n", encoding="utf-8")
             return FakeStru(), None, None, None
 
@@ -277,6 +292,11 @@ def test_band_nscf_line_kpt_clears_inherited_gamma_selectors(monkeypatch, tmp_pa
         "basis_type": "pw",
     })
     monkeypatch.setattr(band_module, "AbacusStru", FakeAbacusStru)
+    monkeypatch.setattr(
+        band_module,
+        "generate_work_path",
+        lambda **_kwargs: str(tmp_path / "staged-inputs"),
+    )
     monkeypatch.setattr(band_module, "WriteKpt", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         band_module, "property_calculation_scf",
@@ -301,7 +321,7 @@ def test_band_nscf_line_kpt_clears_inherited_gamma_selectors(monkeypatch, tmp_pa
     assert written["calculation"] == "nscf"
     assert written["gamma_only"] == 0
     assert written["kspacing"] is None
-    assert copied["source"] == str(inputs_path / "KPT_band")
+    assert copied["source"] == tmp_path / "staged-inputs" / "KPT_band"
 
 
 def test_generate_input_chern_compatible_with_pyatb_new_signature(monkeypatch):

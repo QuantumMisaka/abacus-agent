@@ -4,8 +4,101 @@ from pathlib import Path
 from typing import Literal, Optional, TypedDict, Dict, Any, List, Union
 from abacustest.lib_prepare.abacus import AbacusStru, ReadInput, WriteInput, WriteKpt
 
-from abacusagent.modules.util.comm import run_abacus, run_pyatb, collect_metrics
+from abacusagent.modules.util.comm import (
+    collect_metrics,
+    generate_work_path,
+    has_chgfile,
+    has_pyatb_matrix_files,
+    link_abacusjob,
+    run_abacus,
+    run_pyatb,
+)
 from abacusagent.modules.util.pyatb import property_calculation_scf
+
+
+def _resolve_band_input_path(
+    abacus_inputs_dir: Path,
+    input_params: dict,
+    parameter: str,
+    default_name: str,
+) -> Path:
+    """Resolve an input-file selector against the prepared input directory."""
+    reference = Path(str(input_params.get(parameter, default_name)))
+    if not reference.is_absolute():
+        reference = Path(abacus_inputs_dir) / reference
+    resolved = reference.resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"Band {parameter} file does not exist: {resolved}")
+    return resolved
+
+
+def _resolve_band_stru_path(abacus_inputs_dir: Path, input_params: dict) -> Path:
+    """Resolve the selected input STRU before creating private staging."""
+    return _resolve_band_input_path(abacus_inputs_dir, input_params, "stru_file", "STRU")
+
+
+def _stage_band_inputs(
+    abacus_inputs_dir: Path,
+    input_params: dict,
+    note=None,
+) -> Path:
+    """Create a private band input copy with reusable outputs isolated.
+
+    Band path generation writes ``KPT_band`` and the downstream property
+    calculation may rewrite its input files.  Keeping inputs and reusable
+    output directories in a private staging directory prevents either
+    operation from changing the exact prepared directory handed off by an
+    upstream tool while retaining existing SCF/matrix artifacts.
+    """
+    staging_note = f"{note}-band-inputs" if note else None
+    staging_dir = Path(generate_work_path(note=staging_note)).absolute()
+    source_stru_path = _resolve_band_stru_path(abacus_inputs_dir, input_params)
+    source_kpt_path = None
+    if "kpt_file" in input_params:
+        source_kpt_path = _resolve_band_input_path(
+            abacus_inputs_dir, input_params, "kpt_file", "KPT"
+        )
+    elif (Path(abacus_inputs_dir) / "KPT").is_file():
+        source_kpt_path = (Path(abacus_inputs_dir) / "KPT").resolve()
+    reusable_output_dirs = [
+        path.name
+        for path in Path(abacus_inputs_dir).iterdir()
+        if path.is_dir() and (path.name.startswith("OUT.") or path.name == "Out")
+    ]
+    link_abacusjob(
+        src=Path(abacus_inputs_dir),
+        dst=staging_dir,
+        copy_files=["INPUT", "STRU", "KPT", *reusable_output_dirs],
+        exclude=[
+            "KPT_band",
+            "*.log",
+            "*.out",
+            "*.json",
+            "log",
+        ],
+        exclude_directories=False,
+    )
+    staged_stru_path = staging_dir / "STRU"
+    if staged_stru_path.exists() or staged_stru_path.is_symlink():
+        staged_stru_path.unlink()
+    shutil.copy2(source_stru_path, staged_stru_path)
+    staged_stru_alias = staging_dir / source_stru_path.name
+    if staged_stru_alias != staged_stru_path and staged_stru_alias.is_symlink():
+        staged_stru_alias.unlink()
+    if source_kpt_path is not None:
+        staged_kpt_path = staging_dir / "KPT"
+        if staged_kpt_path.exists() or staged_kpt_path.is_symlink():
+            staged_kpt_path.unlink()
+        shutil.copy2(source_kpt_path, staged_kpt_path)
+        staged_kpt_alias = staging_dir / source_kpt_path.name
+        if staged_kpt_alias != staged_kpt_path and staged_kpt_alias.is_symlink():
+            staged_kpt_alias.unlink()
+    staged_input = ReadInput(staging_dir / "INPUT")
+    staged_input["stru_file"] = "STRU"
+    if source_kpt_path is not None:
+        staged_input["kpt_file"] = "KPT"
+    WriteInput(staged_input, staging_dir / "INPUT")
+    return staging_dir
 
 def read_band_data(band_file: Path, efermi: float):
     """
@@ -359,15 +452,18 @@ def abacus_cal_band(abacus_inputs_dir: Path,
     Raises:
     """
     try:
+        abacus_inputs_dir = Path(abacus_inputs_dir).absolute()
         input_params = ReadInput(os.path.join(abacus_inputs_dir, "INPUT"))
-        original_stru_file = os.path.join(abacus_inputs_dir, input_params.get('stru_file', "STRU"))
-        original_stru = AbacusStru.ReadStru(original_stru_file)
-        band_kpt_file = os.path.join(abacus_inputs_dir, "KPT_band")
-        new_stru, point_coords, path, _ = original_stru.get_kline(point_number=30,
-                                                                      new_stru_file=original_stru_file,
-                                                                      kpt_file=band_kpt_file)
-        
-        if kpath is not None and high_symm_points is not None:
+        band_inputs_dir = _stage_band_inputs(
+            abacus_inputs_dir, input_params, note=note
+        )
+        # Use only the normalized selectors from the private copy below.  In
+        # particular, an upstream absolute ``kpt_file`` must never be used as
+        # the destination of the NSCF line-path copy.
+        input_params = ReadInput(band_inputs_dir / "INPUT")
+        band_kpt_file = band_inputs_dir / "KPT_band"
+        explicit_kpath = kpath is not None and high_symm_points is not None
+        if explicit_kpath:
             kline = []
             if all(isinstance(item, str) for item in kpath): # A whole continous kline
                 for idx, high_symm_point in enumerate(kpath):
@@ -387,14 +483,29 @@ def abacus_cal_band(abacus_inputs_dir: Path,
                         kline.append(kpoint)
             
             WriteKpt(kline, band_kpt_file, model='line')
-        elif kpath is not None or high_symm_points is not None:
-            print("kpath and high_symm_points must be used together. Use auto-generated kpath and high_symm_points")
+        else:
+            if kpath is not None or high_symm_points is not None:
+                print("kpath and high_symm_points must be used together. Use auto-generated kpath and high_symm_points")
+            original_stru_file = _resolve_band_stru_path(band_inputs_dir, input_params)
+            original_stru = AbacusStru.ReadStru(original_stru_file)
+            original_stru.get_kline(
+                orig_cell=True,
+                point_number=30,
+                new_stru_file=None,
+                kpt_file=band_kpt_file,
+            )
+
+        calculation_mode = mode
+        if calculation_mode == "auto":
+            if has_pyatb_matrix_files(band_inputs_dir):
+                calculation_mode = "pyatb"
+            elif has_chgfile(band_inputs_dir):
+                calculation_mode = "nscf"
         
-        force_run = True if original_stru.get_natoms() != new_stru.get_natoms() else False
         scf_output = property_calculation_scf(
-            abacus_inputs_dir,
-            mode,
-            always_run=force_run,
+            band_inputs_dir,
+            calculation_mode,
+            always_run=False,
             note=note,
         )
         work_path, mode = scf_output["work_path"], scf_output["mode"]
@@ -405,7 +516,7 @@ def abacus_cal_band(abacus_inputs_dir: Path,
                                                         energy_max)
 
             return {'band_gap': postprocess_output['band_gap'],
-                    'band_calc_dir': abacus_inputs_dir,
+                    'band_calc_dir': Path(work_path).absolute(),
                     'band_picture': postprocess_output['band_picture'],
                     "message": "The band is calculated using PYATB after SCF calculation using ABACUS"}
 
