@@ -74,6 +74,7 @@ def convert_md_dump_to_ase_traj(md_dump_path: Path, traj_filename: str="md_traj.
                 md_step = Atoms(symbols = elements,
                                 positions=positions,
                                 cell=lattice_vectors,
+                                pbc=True,
                                 velocities=velocities)
                 md_steps.append(md_step)
     
