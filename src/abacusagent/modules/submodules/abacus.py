@@ -544,7 +544,7 @@ def read_abacus_input_kpt(
         input_param = ReadInput(input_file)
         return_result = {'input_params': input_param}
 
-        kpt_file = os.path.join(abacus_inputs_dir, input_param.get('kpt_file', 'KPT'))
+        kpt_file = os.path.join(abacus_inputs_dir, input_param.get('kpoint_file', 'KPT'))
         if 'gamma_only' in input_param.keys() and input_param['gamma_only']:
             # If only gamma-point is used, ignore KPT file
             return_result['kpt'] = {'kpt_file': None,

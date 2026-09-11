@@ -129,7 +129,7 @@ def abacus_cal_elastic(
         if 'kspacing' in input_params.keys():
             kpt = kspacing2kpt(input_params['kspacing'], stru.get_cell())
             WriteKpt(kpoint_list = kpt + [0, 0, 0],
-                     file_name = os.path.join(input_stru_dir, input_params.get('kpt_file', 'KPT')))
+                     file_name = os.path.join(input_stru_dir, input_params.get('kpoint_file', 'KPT')))
             del input_params['kspacing']
         input_params["calculation"] = 'relax'
         input_params["force_thr_ev"] = relax_force_thr_ev

@@ -44,7 +44,7 @@ def _write_custom_inputs(path: Path) -> Path:
         "calculation scf\n"
         "suffix ABACUS\n"
         "stru_file magnetic.stru\n"
-        "kpt_file initial.kpt\n",
+        "kpoint_file initial.kpt\n",
         encoding="utf-8",
     )
     shutil.copy2(NI_O_STRU, path / "magnetic.stru")
@@ -186,12 +186,12 @@ def test_band_explicit_path_bypasses_seekpath_and_normalizes_custom_inputs(
 
     staged_input = ReadInput(seen["inputs_dir"] / "INPUT")
     assert staged_input["stru_file"] == "STRU"
-    assert staged_input["kpt_file"] == "KPT"
+    assert staged_input["kpoint_file"] == "KPT"
     kpt_band = (seen["inputs_dir"] / "KPT_band").read_text(encoding="utf-8")
     assert "0.50000000000" in kpt_band
     runtime_input = ReadInput(work_path / "INPUT")
     assert runtime_input["stru_file"] == "STRU"
-    assert runtime_input["kpt_file"] == "KPT"
+    assert runtime_input["kpoint_file"] == "KPT"
     assert (work_path / "KPT").read_text(encoding="utf-8") == kpt_band
 
 
@@ -364,3 +364,60 @@ def test_band_charge_reuse_runs_nscf_in_staging_with_real_property_helper(
     assert (inputs / "INPUT").read_bytes() == source_input
     assert (inputs / "KPT").read_bytes() == source_kpt
     assert not (inputs / "OUT.ABACUS" / "BANDS_1.dat").exists()
+
+
+def test_band_staging_writes_kpoint_file_not_kpt_file(tmp_path, monkeypatch):
+    """Regression: _stage_band_inputs must write ABACUS-native 'kpoint_file',
+    not the non-standard 'kpt_file' that ABACUS rejects with
+    'THE PARAMETER NAME kpt_file IS NOT USED'.
+
+    See: task 45077, 45082 (ABACUS v3.10.1 band failure).
+    """
+    inputs = _write_custom_inputs(tmp_path / "inputs")
+    work_path = tmp_path / "band-work"
+    work_path.mkdir()
+    seen = {}
+
+    def fake_scf(abacus_inputs_dir, mode, always_run=False, note=None):
+        seen.update(inputs_dir=Path(abacus_inputs_dir), mode=mode)
+        return {"work_path": work_path, "mode": "nscf"}
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(band, "property_calculation_scf", fake_scf)
+    monkeypatch.setattr(band, "run_abacus", lambda *a, **kw: None)
+    monkeypatch.setattr(band, "abacus_plot_band_nscf", lambda *a, **kw: {
+        "band_gap": 0.0, "band_picture": str(work_path / "band.png"),
+    })
+
+    band.abacus_cal_band(
+        inputs,
+        mode="nscf",
+        kpath=["G", "X"],
+        high_symm_points={"G": [0.0, 0.0, 0.0], "X": [0.5, 0.0, 0.0]},
+        note="regression",
+    )
+
+    staged_input = ReadInput(seen["inputs_dir"] / "INPUT")
+    # The correct ABACUS parameter name is 'kpoint_file', not 'kpt_file'
+    assert "kpoint_file" in staged_input, (
+        "staged INPUT must contain ABACUS-native 'kpoint_file'"
+    )
+    assert "kpt_file" not in staged_input, (
+        "staged INPUT must NOT contain non-standard 'kpt_file' "
+        "(ABACUS rejects it: THE PARAMETER NAME 'kpt_file' IS NOT USED)"
+    )
+    assert staged_input["kpoint_file"] == "KPT"
+
+    # Also verify the raw file content does not contain 'kpt_file'
+    raw_text = (seen["inputs_dir"] / "INPUT").read_text(encoding="utf-8")
+    for line in raw_text.splitlines():
+        stripped = line.split("#")[0].strip()
+        if stripped:
+            key = stripped.split()[0]
+            assert key != "kpt_file", (
+                f"INPUT file contains 'kpt_file' key: {line!r}"
+            )
+
+    runtime_input = ReadInput(work_path / "INPUT")
+    assert "kpoint_file" in runtime_input
+    assert "kpt_file" not in runtime_input

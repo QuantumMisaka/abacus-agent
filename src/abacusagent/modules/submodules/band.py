@@ -54,9 +54,9 @@ def _stage_band_inputs(
     staging_dir = Path(generate_work_path(note=staging_note)).absolute()
     source_stru_path = _resolve_band_stru_path(abacus_inputs_dir, input_params)
     source_kpt_path = None
-    if "kpt_file" in input_params:
+    if "kpoint_file" in input_params:
         source_kpt_path = _resolve_band_input_path(
-            abacus_inputs_dir, input_params, "kpt_file", "KPT"
+            abacus_inputs_dir, input_params, "kpoint_file", "KPT"
         )
     elif (Path(abacus_inputs_dir) / "KPT").is_file():
         source_kpt_path = (Path(abacus_inputs_dir) / "KPT").resolve()
@@ -96,7 +96,7 @@ def _stage_band_inputs(
     staged_input = ReadInput(staging_dir / "INPUT")
     staged_input["stru_file"] = "STRU"
     if source_kpt_path is not None:
-        staged_input["kpt_file"] = "KPT"
+        staged_input["kpoint_file"] = "KPT"
     WriteInput(staged_input, staging_dir / "INPUT")
     return staging_dir
 
@@ -531,7 +531,7 @@ def abacus_cal_band(abacus_inputs_dir: Path,
             WriteInput(input_params, os.path.join(work_path, "INPUT"))
             
             # Prepare line-mode KPT file
-            kpt_file = os.path.join(work_path, input_params.get('kpt_file', 'KPT'))
+            kpt_file = os.path.join(work_path, input_params.get('kpoint_file', 'KPT'))
             shutil.copy(band_kpt_file, kpt_file)
 
             run_abacus(work_path)
